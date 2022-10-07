@@ -3593,7 +3593,7 @@ real function fJQres(eJmx,alpha,Q,theta)
     end
 
 ! ==============================================================
-! get input data: year, doy, hour, Tair, Tsoil, RH, VPD, Rain, WS, PAR,
+! get input data: year, doy, hour, Tair, Tsoil, RH, VPD, Rain, WS, PAR
 subroutine Getclimate(year_seq,doy_seq,hour_seq,          &
     &   forcing_data,climatefile,lines,yr_length)
     implicit none
