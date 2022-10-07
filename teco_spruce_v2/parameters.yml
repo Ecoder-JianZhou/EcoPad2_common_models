@@ -1,0 +1,48 @@
+
+real,dimension(10):: thksl, FRLEN
+
+real CH4(nlayers),CH4_V(nlayers)
+real sftmp,Tsnow,Twater,Tice, ice_tw, water_tw  ! soil temperature
+
+real G
+
+real Esoil
+real snow_dsim, dcount, dcount_soil
+
+real,dimension(10):: Tsoill,ice,liq_water
+real zwt
+
+! const parameters
+real, parameter:: times_storage_use=720.   ! 720 hours, 30 days
+
+! N cycle process
+real N_deposit, N_fert
+real N_miner,alphaN
+real NSN, QNminer, N_deficit, QNplant
+real CN0(8), CN(8), QN(8)
+
+! photosys
+real SLA
+real LAI
+
+! plant growth
+real GLmax, GRmax, Gsmax, stor_use, Storage
+real bmroot,bmstem,bmleaf,bmplant
+
+! carbon transfer
+real TauC(8)
+real real
+real QC(8) !  leaf,wood,root,fine lit.,coarse lit.,Micr,Slow,Pass
+
+! soil water
+real WILTPT,FILDCP,infilt
+
+! pheonogy
+real accumulation
+
+! input parameters?
+real LAIMIN
+real SLAx
+real GLmx,Gsmx,GRmx
+real wsmax,wsmin
+
