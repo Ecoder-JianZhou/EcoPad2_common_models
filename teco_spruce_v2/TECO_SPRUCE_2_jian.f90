@@ -25,7 +25,7 @@
 ! ===============================================================================================================
 
 
-program TECO_main
+program TECO
     character(len=150) parsFile, forcingFile
     write(*,*) "This is TECO main ..."
     call getarg(1,parsFile)
@@ -33,18 +33,34 @@ program TECO_main
     call TECO_simu(parsFile, forcingFile)
 end
 
+subroutine TECO_main(parsFile, forcingFile, )
+    ! This module is to run TECO, for reading parameters, forcing data, other input data.
+
+end subroutine 
+
 subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
     implicit none
     character(len=150) parsFile, forcingFile
-    
+    ! ==== forcing data ====
+    real, dimension (:,:), allocatable :: forcingData  ! the forcing data
+    integer :: nLines, yr_len                          ! recording the real lines
+    integer, parameter :: ilines  = 150000             ! for raw forcing data
+    integer, parameter :: iiterms = 10  ! year, doy, hod, Tair, Tsoil, RH, VPD, Rain, WS, PAR
+    real forcingData_raw(iiterms,ilines)               ! raw forcing data
     ! ==== const parameters 
     real, parameter:: times_storage_use=720.   ! 720 hours, 30 days
     integer, parameter :: nlayers=10            ! for methame
     ! ===== input parameters
-    real LAIMIN
-    real SLAx
-    real GLmx,Gsmx,GRmx
-    real wsmax,wsmin
+    real co2ca,CO2treat,Ttreat
+    ! -------------------------
+    real SLAx ! =SLA
+    real lat,longi,wsmax,wsmin                  
+    real LAIMAX,LAIMIN,rdepth,Rootmax,Stemmax
+    real SapR,SapS,SLA,GLmax,GRmax,Gsmax,stom_n
+    real a1,Ds0,Vcmax0,extkU,xfang,alpha
+    real Tau_Leaf,Tau_Wood,Tau_Root,Tau_F,Tau_C
+    real Tau_Micro,Tau_slowSOM,Tau_Passive
+    real gddonset,Q10,Rl0,Rs0,Rr0
     !  === calculating parameters ========
     ! -------N cycle process
     real N_deposit, N_fert                       
@@ -52,32 +68,34 @@ subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
     real NSN, QNminer, N_deficit, QNplant
     real CN0(8), CN(8), QN(8)
     ! -------photosys-------
-    real SLA 
     real LAI
     !------- plant growth
-    real GLmax, GRmax, Gsmax, stor_use, Storage
+    real GLmx,Gsmx,GRmx  ! == GLmax?
+    real stor_use, Storage
     real bmroot,bmstem,bmleaf,bmplant
     real SNvcmax
+    real StemSap, RootSap, NSCmin, NSCmax
     ! ------- carbon transfer ------
     real TauC(8)
-    real tau_L, tau_W, tau_R, tau_F,tau_C,tau_Micr,tau_Slow,tau_Pass
+    ! real tau_L, tau_W, tau_R, tau_F,tau_C,tau_Micr,tau_Slow,tau_Pass
     real QC(8) !  leaf,wood,root,fine lit.,coarse lit.,Micr,Slow,Pass
     ! ------- soil water
     real WILTPT,FILDCP,infilt
     ! ------- pheonogy
     real accumulation
-    real GDD5, onset, phenoset
+    real GDD5, onset, phenoset, Ta ! Jian: Ta?
     real,dimension(10):: thksl, FRLEN
     ! ---- water, temperature, snow, methane -----!
     real CH4(nlayers),CH4_V(nlayers)
     real sftmp,Tsnow,Twater,Tice, ice_tw, water_tw  ! soil temperature
     real G
-    real Esoil
+    real Esoil, snow_depth
     real snow_dsim, dcount, dcount_soil
     real,dimension(10):: Tsoill,ice,liq_water
-    real zwt
-    ! ---- paramters for runing cycle ----------
-    integer m, n, k1, iyr, idays, daily, first_year
+    real zwt, zwt_d, rain_d, melt, snow_depth_e
+    real soilt_d_simu(11),soilt_d_obs(7),ice_d_simu(10)
+    logical do_snow,do_soilphy
+    real b_bound,fa,fsub,rho_snow,decay_m,condu_b
     ! ===== output parameters =======================================
     real diff_yr, gpp_yr, R_Ntr_yr, NPP_yr, NEE_yr
     real Rh_yr, Rh4_yr, Rh5_yr, Rh6_yr, Rh7_yr, Rh8_yr, Ra_yr
@@ -89,8 +107,23 @@ subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
     ! ----- Nitrogen fluxes
     real N_up_yr, N_fix_yr, N_dep_yr, N_leach_yr, N_vol_yr    ! ---- test variable
     real fwsoil_yr, omega_yr, topfws_yr
-    
-
+    ! ------------------------------------------------
+    real simuCH4_d, Pro_sum_d, Oxi_sum_d, Fdifu1_d, Ebu_sum_d, Pla_sum_d            
+    real CH4V_d(nlayers)
+    real diff_d, gpp_d, gpp_ra, NPP_d, NEP_d, NEE_d
+    real transp_d, Hcanop_d, evap_d, Ts, runoff_d, LE_d
+    real RaL, RaS, RaR, Rauto, Rh_d, N_up_d, N_fix_d, N_dep_d, N_leach_d
+    real N_vol_d, PAR_d, VPD_d, RECO_d, RLEAV_d, RWOOD_d, RROOT_d
+    real GL_d, GW_d, GR_d, LFALL_d, NUP_d, NVOL_d, NLEACH_d, NMIN_d
+    real N_LG_d, N_WG_d, N_RG_d, N_LF_d, N_WF_d, N_RF_d, WFALL_d, RFALL_d
+    ! ========== parameters for cycling ==============
+    integer iForcing
+    integer first_year, iyr, ndays, iday, dtimes, ihod ! Jian: new cycle parameters
+    logical isInitYr
+    integer year, doy, hour
+    real Tair, Tsoil, RH, Dair, rain,wind,PAR, radsol
+    ! Jian: may be not used
+    integer day_mod
 
     ! --------- Jian: before parameters ---------------
     ! Jian: some default values, not sure why put here! 
@@ -125,7 +158,7 @@ subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
     N_deposit = 2.34/8760. ! N_deposit=0.000144634702 !(gN/h/m2, 1.2+0.067 gN/yr/m2,Oak ridge)  0.7 gN/yr/m2, 13.4 kg N ha-1 yr-1, 2000, Dentener et al. 2006, GBC, Duke FACE
     N_fert    = 0. !5.6 ! (11.2 gN m-2 yr-1, in spring, Duke Forest FACE); N_fert=0. ! (20.0 gN m-2 yr-1, in spring, from 2004, Oak Ridge)
     
-    tauC    = (/tau_L,tau_W,tau_R,tau_F,tau_C,tau_Micr,tau_Slow,tau_Pass/)*8760. ! the unit of residence time is transformed from yearly to hourly
+    tauC    = (/Tau_Leaf,Tau_Wood,Tau_Root,Tau_F,Tau_C,Tau_Micro,Tau_slowSOM,Tau_Passive/)*8760. ! the unit of residence time is transformed from yearly to hourly
     SLA     = SLAx/10000.                                                        ! Convert unit from cm2/g to m2/g
     GLmax   = GLmx/8760.            ! growth rates of plant
     GRmax   = GRmx/8760.
@@ -155,34 +188,22 @@ subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
     QNplant  =QN(1) + QN(2) + QN(3)
     ! --------------------------------------------------------
     ! Jian: read forcing data from input file path (need add subroutine to read)
-    input_data = forcing_data   ! Jian: id, year, doy, hour, 
+    call Getclimate(forcingFile, ilines, iiterms, nLines, forcingData_raw)
+    allocate (forcingData(iiterms,nLines))
+    forcingData = forcingData_raw(:,1:nLines)
+    yr_len      = forcingData(1,nLines)-forcingData(1,1)+1
+    first_year  = forcingData(1,1)
     ! end of reading forcing data
-    ! parameters for run cycle
-    m=1
-    n=1
-    k1=1
-    iyr=0
-    idays=365
-    daily=0
-    first_year=2011
     ! =============================================================
-    ! Jian: to run simulation according to the input forcing data
-    do yr=1,yrs_eq+yr_length  ! Jian: do iyr = 1, yr_len !
-        !               if(yr.gt.3)then
-        ! !                  write(*,*)'One year done'
-        !               endif
-        ! !            using ambient data to run equilibiurm, elevated only for the last cycle
-        !              iyr=iyr+1
-        !              if(iyr>yr_length)iyr=1
-
-        ! !!          leap year
-        !            if(MOD(first_year+iyr-1,4).eq.0)then
-        !                  idays=366
-        !            else
-        !                  idays=365
-        !            endif
-           
-           
+    iForcing = 1
+    do iyr=1,yr_len 
+        ! leap year
+        if(MOD(first_year+iyr-1,4).eq.0)then
+                ndays=366
+        else
+                ndays=365
+        endif
+        ! initial yearly data
         GDD5=0.0
         onset=0
         phenoset=0
@@ -233,14 +254,13 @@ subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
         fwsoil_yr=0.
         omega_yr=0.
         topfws_yr=0.
-        hoy=0
+        ! hoy=0
         ! start to run day of year
-        do days = 1, idays ! Jian: may be according to forcing data; iday = 1, days
+        do iday = 1, ndays ! Jian: may be according to forcing data; iday = 1, days
             ! Jian: to simulate the N fertilization --> since 2004 in Oak Ridge and 1999 in Duke; N_fert = 0. in SPRUCE.
-            if(yr>yrs_eq+1.and.(days==75.OR.days==105))then
-                QNminer=QNminer+N_fert     ! (5.6 gN/yr/m2,N fertiliztion in March and Apr)
-            endif
-
+            ! if(yr>yrs_eq+1.and.(days==75.OR.days==105))then
+            !     QNminer=QNminer+N_fert     ! (5.6 gN/yr/m2,N fertiliztion in March and Apr)
+            ! endif
             StemSap = AMIN1(Stemmax,SapS*bmStem)   ! Stemmax and SapS were input from parameter file, what are they? Unit? Maximum stem biomass? -JJJJJJJJJJJJJJJJJJJJJJ 
             RootSap = AMIN1(Rootmax,SapR*bmRoot)
             NSCmin  = 5. 
@@ -251,14 +271,14 @@ subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
             ice_d_simu   = (/0.,0.,0.,0.,0.,0.,0.,0.,0.,0./) 
             soilt_d_obs  = (/0.,0.,0.,0.,0.,0.,0./) 
             zwt_d        = 0.0
-            obs_counter  = (/0,0,0,0,0,0,0/) 
+            ! obs_counter  = (/0,0,0,0,0,0,0/) 
             ! Jian: whether run snow module? 
             if (do_snow) then 
-                if (yr .eq. 1. .and. days .eq. 1.) then  ! Jian: the first day of first year?
+                if (iyr .eq. 1. .and. iday .eq. 1.) then  ! Jian: the first day of first year?
                     ta     = -12.85                      ! since changed the ta criteria (0. to 1.e-10)) in calculating melt
                     rain_d = 0.                          ! dbmemo
                 endif
-                call snow_d(rain_d,lat,days,ta,snow_dsim,fa,fsub,rho_snow,melt,dcount,decay_m)                            
+                call snow_d(rain_d,lat,iday,ta,snow_dsim,fa,fsub,rho_snow,melt,dcount,decay_m)                            
                 snow_depth_e = snow_dsim
             endif 
             ! initialization of parameters used in daily methane module              
@@ -319,37 +339,38 @@ subroutine TECO_simu(parsFile, forcingFile)   ! Jian: teco.teco_simu() in python
             RFALL_d=0.0
             ! Jian: to run daily simulation:  
             dtimes = 24 !how many times a day,24 means every hour
-            do i = 1,dtimes
+            do ihod = 1,dtimes
                 ! input data
-                if(m > lines)then    ! Repeat forcing data for the whole time period
-                    m=1		        ! m is row sequence in the file of input_data
-                    n=1
-                    hoy=0
-                endif
-                year  = year_seq(m)
-                doy   = doy_seq(m)
-                hour  = hour_seq(m)+1
-                Tair  = input_data(1,m)   ! Tair
-                Tsoil = input_data(2,m)    ! SLT                  
-                RH     = input_data(3,m)
-                Dair   = input_data(4,m)       !air water vapour defficit? Unit Pa
-                rain   = input_data(5,m)    ! rain fal per hour
-                wind   = ABS(input_data(6,m))     ! wind speed m s-1
-                PAR    = input_data(7,m)             ! Unit ? umol/s/m-2
-                radsol = input_data(7,m)        ! unit ? PAR actually
-                ! Rnet   = input_data(9,m)
+                ! if(m > lines)then    ! Repeat forcing data for the whole time period
+                !     m=1		        ! m is row sequence in the file of input_data
+                !     n=1
+                !     hoy=0
+                ! endif
+                ! year	doy	hour	Tair	Tsoil	RH	VPD	Rain	WS	PAR
+                year  = forcingData(1, iForcing)
+                doy   = forcingData(2, iForcing)
+                hour  = forcingData(3, iForcing)
+                Tair  = forcingData(4,iForcing)   ! Tair
+                Tsoil = forcingData(5,iForcing)    ! SLT                  
+                RH     = forcingData(6,iForcing)
+                Dair   = forcingData(7,iForcing)       !air water vapour defficit? Unit Pa
+                rain   = forcingData(8,iForcing)    ! rain fal per hour
+                wind   = ABS(forcingData(9,iForcing))     ! wind speed m s-1
+                PAR    = forcingData(10,iForcing)             ! Unit ? umol/s/m-2
+                radsol = forcingData(10,iForcing)        ! unit ? PAR actually
+                ! Rnet   = forcingData(9,iForcing)
                 co2ca  = 380.0*1.0E-6
-                if (yr .gt. 1)then ! Jian: experimental treat in SPRUCE
+                if (iyr .gt. 1)then ! Jian: experimental treat in SPRUCE
                     Tair  = Tair  + Ttreat
                     Tsoil = Tsoil + Ttreat
                     co2ca = CO2treat*1.0E-6 ! CO2 concentration,ppm-->1.0E-6
                 endif
                 ! int added for soil thermal/ soil water
-                day_mod = mod(m,24)
+                day_mod = mod(iForcing,24)
                 if (do_snow) then
                     snow_depth = snow_depth_e
                 else
-                    snow_depth = snow_in(m)
+                    snow_depth = snow_in(iForcing)
                 endif
                 if (snow_depth .lt. 0.0) snow_depth = 0.0   
                 snow_depth = snow_depth*100.   ! change from m to cm
@@ -2290,225 +2311,180 @@ subroutine snow_d(rain_d,lat,days,ta,snow_dsim,fa,fsub,rho_snow,melt,dcount,deca
 ! end of soil temperature 
 ! --------------------------------------------------------------------------------------------------
 
+! ---------------------------------------------------------------------------
  subroutine methane(Rh_pools,Tsoil,zwt,wsc,      &      !update single value in a hourly loop when MEMCMC=0
     &             phi,LAIMIN,LAIMAX,           &
     &             ProCH4,Pro_sum,OxiCH4,Oxi_sum,Fdifu,Ebu_sum,Pla_sum,simuCH4,CH4,CH4_V,   &
-!    &             ProCH4,Pro_sum,OxiCH4,Oxi_sum,Fdifu,Ebu_sum,Pla_sum,simuCH4,CH4,  &
     &             r_me,Q10pro,kCH4,Omax,CH4_thre,Tveg,Tpro_me,Toxi, &
     &             testout, do_soilphy)  !update single value of Rh_pools,Tsoil,zwt,wsc 
     !                                                           in a hourly loop when MEMCMC=1
-!******************************************************************************************************************************
-!****!introduce variables and constants used in this subroutine
-!****************************************************************************************************************************** 
-!     set soil layers
-!****************************************************************************************************************************** 
-      implicit none
-!      integer i,MEMCMC
-      integer i
-      integer,parameter :: nlayers=10       !use this statement to set the parameter value
-      real zwt    
-      real consum
-!****************************************************************************************************************************** 
-!     set values for MEMCMC
-!******************************************************************************************************************************       
-      integer,parameter :: miterms=17
-      integer,parameter :: ilines=9000      
-!******************************************************************************************************************************
-!     CH4 Production      
-!******************************************************************************************************************************      
-!      real Rhetero
-      real Rh(nlayers),Rh_pools(5),Rh_h,ProCH4(nlayers),Pro_sum
-      real r_me         !release ratio of CH4 to CO2
-      real Q10pro
-      real fSTP(nlayers)         !CH4 production factor of soil temperature
-      real vt,xt
-      real Tmax_me,Tpro_me
-      real fpH          !CH4 production factor of soil pH
-      real fEhP         !CH4 production factor of soil redox potential
-      real FRLEN(nlayers)        !fraction of root in each layer
-      real Tsoil
-!****************************************************************************************************************************** 
-!     CH4 Oxidation
-!******************************************************************************************************************************      
-!      real CH4(nlayers),CH4_V(nlayers+1)          !both are CH4 concentration: CH4(nlayers)unit gC/m2, CH4_V(nlayers) unit g C/ m3
-      real CH4(nlayers),CH4_V(nlayers)          !both are CH4 concentration: CH4(nlayers)unit gC/m2, CH4_V(nlayers) unit g C/ m3
-      real wsc(nlayers)      
-      real OxiCH4(nlayers),Oxi_sum       !CH4 oxidation
-      real Omax_layers(nlayers),Omax       !maximum oxidation rate
-      real kCH4_layers(nlayers),kCH4       !system specific half saturation constant
-      real Q10oxi
-      real fCH4(nlayers)         !CH4 oxidation factor of CH4 concentration
-      real fSTO(nlayers)         !CH4 oxidation factor of soil temperature
-      real fEhO         !CH4 oxidation factor of soil redox potential
-      real Toxi
-!****************************************************************************************************************************** 
-!     CH4 Diffusion
-!******************************************************************************************************************************      
-      real Deff(nlayers)     !CH4 effective diffusivity !!used in mineral soil  v1.1 
-      real D_CH4_a           !CH4 diffusion coefficient in air  !unit cm2 s-1   diffusivity of CH4 in air
-      real D_CH4_w           !CH4 diffusion coefficient in water  !unit cm2 s-1   diffusivity of CH4 in water
-      real phi          !soil porosity  also used in water table part
-      real fwater(nlayers),fair(nlayers)
-      real D_CH4_soil(nlayers),D_CH4_soil_a(nlayers),D_CH4_soil_b(nlayers)      !!used in organic peat soil  v1.2
-      real fcoarse      !relative volume of coarse pores depending on soil texture  Zhuang 2004
-      real ftort        !tortuosity coefficient with a value of 0.66    Walter and Heimann 2000
-      !suggesting that the distance covered by diffusion is about two thirds of the length of the real average path
-      real SAND         !relative contents of sand (%) in the soil
-      real PVSAND       !relative volume of coarse pores in sandy soils     set to 0.45     value from Walter 2001
-      real SILT         !relative contents of silt (%) in the soil
-      real PVSILT       !relative volume of coarse pores in silty soils     set to 0.20     value from Walter 2001
-      real CLAY         !relative contents of clay (%) in the soil
-      real PVCLAY       !relative volume of coarse pores in clayish soils     set to 0.14   value from Walter 2001
-      real DEPTH(10)        !depth in soil  will define it inside this subroutine again      resolution 100mm 200mm
-      real THKSL(10)        !will define it inside this subroutine again  
-!      real Fdifu(nlayers+1)
-      real Fdifu(nlayers)
-      real CH4_atm      !concentration of CH4 in atmosphere     seen as 0 cause the value is too low someone use 0.076
-      real simuCH4      !simulated CH4 emission
-!***********  Boundary condition parameters    *************      
-      real ScCH4                                 !Schmidt numbers for methane Wania
-      real pistonv                               !Piston velocity
-      real Ceq                                   !equilibrium concentration of gas in the atmosphere
-      real kHinv                                 !Henry's coefficient dependent variable on left side of equation, T is the independent variable
-      real kH_CH4         !Henry's constant at standard temperature (CH4) Unit L atm mol-1
-      real CHinv          !Coefficient in Henry's Law Unit K      
-      real Tsta           !standard temperature Unit K
-      real Ppartial       !CH4 partial pressure in air Unit atm
+    ! introduce variables and constants used in this subroutine 
+    ! set soil layers 
+    implicit none
+    integer i
+    integer,parameter :: nlayers=10       !use this statement to set the parameter value
+    real zwt    
+    real consum
+    ! set values for MEMCMC      
+    integer,parameter :: miterms=17
+    integer,parameter :: ilines=9000      
+    ! CH4 Production      
+    ! real Rhetero
+    real Rh(nlayers),Rh_pools(5),Rh_h,ProCH4(nlayers),Pro_sum
+    real r_me         !release ratio of CH4 to CO2
+    real Q10pro
+    real fSTP(nlayers)         !CH4 production factor of soil temperature
+    real vt,xt
+    real Tmax_me,Tpro_me
+    real fpH          !CH4 production factor of soil pH
+    real fEhP         !CH4 production factor of soil redox potential
+    real FRLEN(nlayers)        !fraction of root in each layer
+    real Tsoil
+    ! CH4 Oxidation   
+    ! real CH4(nlayers),CH4_V(nlayers+1)          !both are CH4 concentration: CH4(nlayers)unit gC/m2, CH4_V(nlayers) unit g C/ m3
+    real CH4(nlayers),CH4_V(nlayers)          !both are CH4 concentration: CH4(nlayers)unit gC/m2, CH4_V(nlayers) unit g C/ m3
+    real wsc(nlayers)      
+    real OxiCH4(nlayers),Oxi_sum       !CH4 oxidation
+    real Omax_layers(nlayers),Omax       !maximum oxidation rate
+    real kCH4_layers(nlayers),kCH4       !system specific half saturation constant
+    real Q10oxi
+    real fCH4(nlayers)         !CH4 oxidation factor of CH4 concentration
+    real fSTO(nlayers)         !CH4 oxidation factor of soil temperature
+    real fEhO         !CH4 oxidation factor of soil redox potential
+    real Toxi
+    ! CH4 Diffusion  
+    real Deff(nlayers)     !CH4 effective diffusivity !!used in mineral soil  v1.1 
+    real D_CH4_a           !CH4 diffusion coefficient in air  !unit cm2 s-1   diffusivity of CH4 in air
+    real D_CH4_w           !CH4 diffusion coefficient in water  !unit cm2 s-1   diffusivity of CH4 in water
+    real phi          !soil porosity  also used in water table part
+    real fwater(nlayers),fair(nlayers)
+    real D_CH4_soil(nlayers),D_CH4_soil_a(nlayers),D_CH4_soil_b(nlayers)      !!used in organic peat soil  v1.2
+    real fcoarse      !relative volume of coarse pores depending on soil texture  Zhuang 2004
+    real ftort        !tortuosity coefficient with a value of 0.66    Walter and Heimann 2000
+    !suggesting that the distance covered by diffusion is about two thirds of the length of the real average path
+    real SAND         !relative contents of sand (%) in the soil
+    real PVSAND       !relative volume of coarse pores in sandy soils     set to 0.45     value from Walter 2001
+    real SILT         !relative contents of silt (%) in the soil
+    real PVSILT       !relative volume of coarse pores in silty soils     set to 0.20     value from Walter 2001
+    real CLAY         !relative contents of clay (%) in the soil
+    real PVCLAY       !relative volume of coarse pores in clayish soils     set to 0.14   value from Walter 2001
+    real DEPTH(10)        !depth in soil  will define it inside this subroutine again      resolution 100mm 200mm
+    real THKSL(10)        !will define it inside this subroutine again  
+    ! real Fdifu(nlayers+1)
+    real Fdifu(nlayers)
+    real CH4_atm      !concentration of CH4 in atmosphere     seen as 0 cause the value is too low someone use 0.076
+    real simuCH4      !simulated CH4 emission
+    ! -----  Boundary condition parameters  -----     
+    real ScCH4                                 !Schmidt numbers for methane Wania
+    real pistonv                               !Piston velocity
+    real Ceq                                   !equilibrium concentration of gas in the atmosphere
+    real kHinv                                 !Henry's coefficient dependent variable on left side of equation, T is the independent variable
+    real kH_CH4         !Henry's constant at standard temperature (CH4) Unit L atm mol-1
+    real CHinv          !Coefficient in Henry's Law Unit K      
+    real Tsta           !standard temperature Unit K
+    real Ppartial       !CH4 partial pressure in air Unit atm
 
-!****************************************************************************************************************************** 
-!     Ebullition 
-!******************************************************************************************************************************      
-      real CH4_thre,CH4_thre_ly(nlayers),EbuCH4(nlayers),Kebu
-      real Ebu_sum_unsat,Ebu_sum_sat,Ebu_sum          !sum value one dimension is enough 
-      integer wtlevelindex
-!****************************************************************************************************************************** 
-!     Plant transport
-!******************************************************************************************************************************      
-      real PlaCH4(nlayers),Pla_sum
-      real LAIMIN,LAIMAX
-      real Tveg,Tgr,Tmat,fgrow,Pox,Kpla
-!****************************************************************************************************************************** 
-!******************************************************************************************************************************
-      ! Yuan added for soil temp  
-      logical do_soilphy
-      real testout(11), tsoil_layer(11)
-!****************************************************************************************************************************** 
-!******************************************************************************************************************************
-!      MEMCMC=0   ! note here, any changes here result unexpected bug 
-      Rh_h=Rh_pools(1)+Rh_pools(2)+Rh_pools(3)+Rh_pools(4)+Rh_pools(5)  !hourly Rh_f + Rh_c + Rh_Micr + Rh_Slow + Rh_Pass
-      
-
-      tsoil_layer = testout
-      FRLEN = (/0.75,0.2,0.02,0.015,0.005,0.0,0.0,0.0,0.0,0.0/)             
-!      FRLEN = (/0.1,0.25,0.25,0.2,0.1,0.05,0.025,0.015,0.005,0.005/)
-!            FRLEN = (/0.05,0.1,0.1,0.1,0.15,0.25,0.25,0.0,0.00,0.00/)
-      thksl = (/10.,10.,10.,10.,10.,20.,20.,20.,20.,20./)
-      simuCH4 = 0.0                 ! v1.2 
-      do i = 1, nlayers
-                                        !!!!!!!put it out of the subroutine
-         !****************************************************
-         !* Rh weighed according to the distribution of root *
-         !****************************************************
-              if (i .LE. 3) then                                 ! the empirical method used here is from CLM4.5
-                 Rh(i)= 0.5*Rh_h*FRLEN(i)+((0.5*Rh_h)/0.3)*0.1   
-                 ! Rh(h,i)Rh produced by each layer per hour  unit should be g C m-2 h-1 
-              else                                               ! i*10: depth of ith soil layers
-                 Rh(i)= 0.5*Rh_h*FRLEN(i)
-              endif
-!              Rh(i) = Rh(i) + OxiCH4(i)*(11/4)
-      enddo   
-       
-!****************************************************************************************************************************** 
-!******************************************************************************************************************************            
-
-     !****************************************************          
-     !A. methane production     hourly  gC m-2 hour-1
-     !Methane production is modeled as an anaerobic process that occurs in the saturated zone of the soil profile ZHUANG
-     !****************************************************
-     !Rh_h=Rh_pools(1)+Rh_pools(2)+Rh_pools(3)+Rh_pools(4)+Rh_pools(5)  !hourly Rh_f + Rh_c + Rh_Micr + Rh_Slow + Rh_Pass
-     !r assignment
-!      r_me=0.3      !find in parafile
-      Tmax_me=45.0
-!      Tpro_me=10.0
-!      Q10pro=3.0    !find in parafile
-      do i = 1,nlayers          
-          if (do_soilphy) then
-              if (tsoil_layer(i+1) .lt. 0.0) then
-                  fSTP(i) = 0.0
-              else if (tsoil_layer(i+1) .gt. Tmax_me) then
-                  fSTP(i) = 0.0
-              else if (tsoil_layer(i+1) .ge. 0.0 .and. tsoil_layer(i) .le. Tmax_me) then
-                  fSTP(i) = Q10pro**((tsoil_layer(i+1)-Tpro_me)/10)        !Tsoil is the only variable
-              endif
-          else 
-              if (Tsoil .lt. 0.0) then
-                  fSTP(i) = 0.0
-              else if (Tsoil .gt. Tmax_me) then
-                  fSTP(i) = 0.0
-              else if (Tsoil .ge. 0.0 .and. Tsoil .le. Tmax_me) then
-                  fSTP(i) = Q10pro**((Tsoil-Tpro_me)/10)        !Tsoil is the only variable
-              endif
-          endif
-      enddo
-     !fpH assignment
-      fpH=1.0
-     !fEhP assignment
-      fEhP=1.0
-    
-      depth(1)=10.0                                  !calculate soil depth unit cm
-      do i=2,nlayers
-          depth(i)=depth(i-1)+THKSL(i)
-      enddo
-      
-      Pro_sum=0.0
-      do i = 1,nlayers
-!          (depth(i)*10)                   !convert unit from cm to mm
-!          (THKSL(i)*10)                   !convert unit from cm to mm convert the unit in each of the equations
-          if ((depth(i)*10) .le. -zwt) then
-                  ProCH4(i)=0.0
-          else
-              if (((depth(i)*10.0)-(THKSL(i)*10.0)) .lt. -zwt) then
-                  ProCH4(i)=Rh(i)*r_me*fSTP(i)*fpH*fEhP*(((depth(i)*10.0)-(-zwt))/(THKSL(i)*10.0))     ! *percent
-              elseif (((depth(i)*10.0)-(THKSL(i)*10.0)) .ge. -zwt) then
-                  ProCH4(i)=Rh(i)*r_me*fSTP(i)*fpH*fEhP
-              endif
-          endif
-          Pro_sum=Pro_sum+ProCH4(i)
-      enddo
-
-     !**************************************************
-     !Add CH4 production to CH4 pool    (gC layer -1)=(gC m-2)
-     !**************************************************
-
-      do i=1,nlayers
-          CH4(i) = CH4(i) + ProCH4(i)
-      enddo
-
-      
-!     END OF METHANE PRODUCTION
-      
-!     ********************************************************************************************************************
-!     B. methane oxidation      hourly  unit gC m-2 h-1     !!!!!!!!!!!method of CLM and Zhuang!!!!!!!!!!!!
-!     Methane oxidation is modeled as an aerobic process that occurs in the unsaturated zone of the soil profile ZHUANG
-!     ********************************************************************************************************************
-!     fSTO assignment
-!     ***************          
-      Q10oxi=2.0      !Zhu 2014 results from previous studies  unit 1  also used by zhang
-!      Toxi=10.0       !Zhuang 2004 table1 Boreal Forest Wetland
-      do i=1,nlayers
-          if (do_soilphy) then
-              fSTO(i)=Q10oxi**((tsoil_layer(i+1)-Toxi)/10.0)
-          else
-              fSTO(i)=Q10oxi**((Tsoil-Toxi)/10.0)
-          endif
-      enddo
-!     fEhO assignment
-      fEhO=1.0        !Walter 2000  did not consider it, equal to value of 1
-
-!     Omax assignment
-!     ***************
-      Oxi_sum=0.0
-      do i = 1,nlayers
+    ! Ebullition     
+    real CH4_thre,CH4_thre_ly(nlayers),EbuCH4(nlayers),Kebu
+    real Ebu_sum_unsat,Ebu_sum_sat,Ebu_sum          !sum value one dimension is enough 
+    integer wtlevelindex
+    ! Plant transport    
+    real PlaCH4(nlayers),Pla_sum
+    real LAIMIN,LAIMAX
+    real Tveg,Tgr,Tmat,fgrow,Pox,Kpla
+    ! Yuan added for soil temp  
+    logical do_soilphy
+    real testout(11), tsoil_layer(11)
+    ! MEMCMC=0   ! note here, any changes here result unexpected bug 
+    Rh_h        = Rh_pools(1)+Rh_pools(2)+Rh_pools(3)+Rh_pools(4)+Rh_pools(5)  !hourly Rh_f + Rh_c + Rh_Micr + Rh_Slow + Rh_Pass
+    tsoil_layer = testout
+    FRLEN   = (/0.75,0.2,0.02,0.015,0.005,0.0,0.0,0.0,0.0,0.0/)             
+    ! FRLEN = (/0.1,0.25,0.25,0.2,0.1,0.05,0.025,0.015,0.005,0.005/)
+    ! FRLEN = (/0.05,0.1,0.1,0.1,0.15,0.25,0.25,0.0,0.00,0.00/)
+    thksl   = (/10.,10.,10.,10.,10.,20.,20.,20.,20.,20./)
+    simuCH4 = 0.0                 ! v1.2 
+    do i = 1, nlayers !!!!!!!put it out of the subroutine
+        !* Rh weighed according to the distribution of root *
+        if (i .LE. 3) then                                 ! the empirical method used here is from CLM4.5
+            Rh(i)= 0.5*Rh_h*FRLEN(i)+((0.5*Rh_h)/0.3)*0.1   
+            ! Rh(h,i)Rh produced by each layer per hour  unit should be g C m-2 h-1 
+        else                                               ! i*10: depth of ith soil layers
+            Rh(i)= 0.5*Rh_h*FRLEN(i)
+        endif
+        ! Rh(i) = Rh(i) + OxiCH4(i)*(11/4)
+    enddo                    
+    ! A. methane production     hourly  gC m-2 hour-1
+    ! Methane production is modeled as an anaerobic process that occurs in the saturated zone of the soil profile ZHUANG
+    ! ----------------------------------------------------------------------------
+    ! Rh_h=Rh_pools(1)+Rh_pools(2)+Rh_pools(3)+Rh_pools(4)+Rh_pools(5)  !hourly Rh_f + Rh_c + Rh_Micr + Rh_Slow + Rh_Pass
+    ! r assignment
+    ! r_me=0.3      !find in parafile
+    Tmax_me = 45.0
+    ! Tpro_me=10.0
+    ! Q10pro=3.0    !find in parafile
+    do i = 1,nlayers          
+        if (do_soilphy) then
+            if (tsoil_layer(i+1) .lt. 0.0) then
+                fSTP(i) = 0.0
+            else if (tsoil_layer(i+1) .gt. Tmax_me) then
+                fSTP(i) = 0.0
+            else if (tsoil_layer(i+1) .ge. 0.0 .and. tsoil_layer(i) .le. Tmax_me) then
+                fSTP(i) = Q10pro**((tsoil_layer(i+1)-Tpro_me)/10)        !Tsoil is the only variable
+            endif
+        else 
+            if (Tsoil .lt. 0.0) then
+                fSTP(i) = 0.0
+            else if (Tsoil .gt. Tmax_me) then
+                fSTP(i) = 0.0
+            else if (Tsoil .ge. 0.0 .and. Tsoil .le. Tmax_me) then
+                fSTP(i) = Q10pro**((Tsoil-Tpro_me)/10)        !Tsoil is the only variable
+            endif
+        endif
+    enddo
+    fpH     = 1.0     !fpH assignment
+    fEhP    = 1.0    !fEhP assignment
+    depth(1)=10.0                                  !calculate soil depth unit cm
+    do i=2,nlayers
+        depth(i)=depth(i-1)+THKSL(i)
+    enddo
+    Pro_sum=0.0
+    do i = 1,nlayers
+        ! (depth(i)*10)                   !convert unit from cm to mm
+        ! (THKSL(i)*10)                   !convert unit from cm to mm convert the unit in each of the equations
+        if ((depth(i)*10) .le. -zwt) then
+            ProCH4(i)=0.0
+        else
+            if (((depth(i)*10.0)-(THKSL(i)*10.0)) .lt. -zwt) then
+                ProCH4(i)=Rh(i)*r_me*fSTP(i)*fpH*fEhP*(((depth(i)*10.0)-(-zwt))/(THKSL(i)*10.0))     ! *percent
+            elseif (((depth(i)*10.0)-(THKSL(i)*10.0)) .ge. -zwt) then
+                ProCH4(i)=Rh(i)*r_me*fSTP(i)*fpH*fEhP
+            endif
+        endif
+        Pro_sum=Pro_sum+ProCH4(i)
+    enddo
+    !Add CH4 production to CH4 pool    (gC layer -1)=(gC m-2)
+    do i=1,nlayers
+        CH4(i) = CH4(i) + ProCH4(i)
+    enddo
+    ! END OF METHANE PRODUCTION
+    ! --------------------------------------------------------------------------------------------------------
+    !     B. methane oxidation      hourly  unit gC m-2 h-1     !!!!!!!!!!!method of CLM and Zhuang!!!!!!!!!!!!
+    !     Methane oxidation is modeled as an aerobic process that occurs in the unsaturated zone of the soil profile ZHUANG
+    ! --------------------------------------------------------------------------------------------------------
+    !     fSTO assignment         
+    Q10oxi = 2.0      !Zhu 2014 results from previous studies  unit 1  also used by zhang
+    ! Toxi=10.0       !Zhuang 2004 table1 Boreal Forest Wetland
+    do i=1,nlayers
+        if (do_soilphy) then
+            fSTO(i)=Q10oxi**((tsoil_layer(i+1)-Toxi)/10.0)
+        else
+            fSTO(i)=Q10oxi**((Tsoil-Toxi)/10.0)
+        endif
+    enddo
+    fEhO = 1.0     ! fEhO assignment   !Walter 2000  did not consider it, equal to value of 1
+    ! Omax assignment
+    Oxi_sum = 0.0
+    do i = 1,nlayers
 !      Omax=1.5
 !      Omax=15.0  !!find in parafile Zhuang 2004 table1 Boreal Forest Wetland μmol L-1 h-1 system specific maximum oxidation coefficient
 !     convert the unit of Omax from μmol L-1 h-1 to gC m-2 h-1
@@ -2904,621 +2880,579 @@ subroutine xlayers(Sps,Tair,Dair,radabv,fbeam,eairP,&                           
     &           testout,Rsoilab1,Rsoilab2,QLleaf,QLair,raero,do_soilphy,&
     &           G,Esoil,Hsoil) ! added from soil thermal ..int 
 
+    ! the multi-layered canopy model developed by 
+    ! Ray Leuning with the new radiative transfer scheme   
+    ! implemented by Y.P. Wang (from Sellers 1986)
+    ! 12/Sept/96 (YPW) correction for mean surface temperature of sunlit
+    ! and shaded leaves
+    ! Tleaf,i=sum{Tleaf,i(n)*fslt*Gaussw(n)}/sum{fslt*Gaussw(n)} 
 
-!    the multi-layered canopy model developed by 
-!    Ray Leuning with the new radiative transfer scheme   
-!    implemented by Y.P. Wang (from Sellers 1986)
-!    12/Sept/96 (YPW) correction for mean surface temperature of sunlit
-!    and shaded leaves
-!    Tleaf,i=sum{Tleaf,i(n)*fslt*Gaussw(n)}/sum{fslt*Gaussw(n)} 
-!    
-     real Gaussx(5),Gaussw(5)
-     real layer1(5),layer2(5)
-     real tauL(3),rhoL(3),rhoS(3),Qabs(3,2),Radabv(2),Rnstar(2)
-     real Aleaf(2),Eleaf(2),Hleaf(2),Tleaf(2),co2ci(2)
-     real gbleaf(2),gsleaf(2),QSabs(3,2),Qasoil(2)
-     integer ng,nw
-     real rhoc(3,2),reff(3,2),kpr(3,2),scatt(2)       !Goudriaan
+    real Gaussx(5),Gaussw(5)
+    real layer1(5),layer2(5)
+    real tauL(3),rhoL(3),rhoS(3),Qabs(3,2),Radabv(2),Rnstar(2)
+    real Aleaf(2),Eleaf(2),Hleaf(2),Tleaf(2),co2ci(2)
+    real gbleaf(2),gsleaf(2),QSabs(3,2),Qasoil(2)
+    integer ng,nw
+    real rhoc(3,2),reff(3,2),kpr(3,2),scatt(2)       !Goudriaan
 
-     real rsoil,rlai,raero,LAI
-     real wsmax,wsmin,WILTPT,FILDCP,wcl(10)
-     real gddonset
-!    additional arrays to allow output of info for each Layer
-     real RnStL(5),QcanL(5),RcanL(5),AcanL(5),EcanL(5),HcanL(5)
-     real GbwcL(5),GswcL(5)
-
-!   *** ..int
-!*************************
-     real testout(11)      
-     logical do_soilphy
-!   *** .int
+    real rsoil,rlai,raero,LAI
+    real wsmax,wsmin,WILTPT,FILDCP,wcl(10)
+    real gddonset
+    ! additional arrays to allow output of info for each Layer
+    real RnStL(5),QcanL(5),RcanL(5),AcanL(5),EcanL(5),HcanL(5)
+    real GbwcL(5),GswcL(5)
+    real testout(11)      
+    logical do_soilphy
      
-! Normalised Gaussian points and weights (Goudriaan & van Laar, 1993, P98)
-!* 5-point
-     data Gaussx/0.0469101,0.2307534,0.5,0.7692465,0.9530899/
-     data Gaussw/0.1184635,0.2393144,0.2844444,0.2393144,0.1184635/
+    ! Normalised Gaussian points and weights (Goudriaan & van Laar, 1993, P98)
+    !* 5-point
+    data Gaussx/0.0469101,0.2307534,0.5,0.7692465,0.9530899/
+    data Gaussw/0.1184635,0.2393144,0.2844444,0.2393144,0.1184635/
 
-!     soil water conditions
-     WILTPT=wsmin/100.
-     FILDCP=wsmax/100.
-!     reset the vairables
-     Rnst1=0.0        !net rad, sunlit
-     Rnst2=0.0        !net rad, shaded
-     Qcan1=0.0        !vis rad
-     Qcan2=0.0
-     Rcan1=0.0        !NIR rad
-     Rcan2=0.0
-     Acan1=0.0        !CO2
-     Acan2=0.0
-     Ecan1=0.0        !Evap
-     Ecan2=0.0
-     Hcan1=0.0        !Sens heat
-     Hcan2=0.0
-     Gbwc1=0.0        !Boundary layer conductance
-     Gbwc2=0.0
-     Gswc1=0.0        !Canopy conductance
-     Gswc2=0.0
-     Tleaf1=0.0       !Leaf Temp
-     Tleaf2=0.0  
- 
-!     aerodynamic resistance                                                
-     raero=50./wind                           
+    ! soil water conditions
+    WILTPT = wsmin/100.
+    FILDCP = wsmax/100.
+    ! reset the vairables
+    Rnst1 = 0.0        !net rad, sunlit
+    Rnst2 = 0.0        !net rad, shaded
+    Qcan1 = 0.0        !vis rad
+    Qcan2 = 0.0
+    Rcan1 = 0.0        !NIR rad
+    Rcan2 = 0.0
+    Acan1 = 0.0        !CO2
+    Acan2 = 0.0
+    Ecan1 = 0.0        !Evap
+    Ecan2 = 0.0
+    Hcan1 = 0.0        !Sens heat
+    Hcan2 = 0.0
+    Gbwc1 = 0.0        !Boundary layer conductance
+    Gbwc2 = 0.0
+    Gswc1 = 0.0        !Canopy conductance
+    Gswc2 = 0.0
+    Tleaf1 = 0.0       !Leaf Temp
+    Tleaf2 = 0.0  
+    ! aerodynamic resistance                                                
+    raero = 50./wind                           
+    ! Ross-Goudriaan function for G(u) (see Sellers 1985, Eq 13)
+    xphi1 = 0.5 - 0.633*xfang -0.33*xfang*xfang
+    xphi2 = 0.877 * (1.0 - 2.0*xphi1)
+    funG  = xphi1 + xphi2*coszen                            !G-function: Projection of unit leaf area in direction of beam 
+    if(coszen.gt.0) then                                    !check if day or night
+        extKb=funG/coszen                                   !beam extinction coeff - black leaves
+    else
+        extKb=100.
+    end if
 
-!    Ross-Goudriaan function for G(u) (see Sellers 1985, Eq 13)
-     xphi1 = 0.5 - 0.633*xfang -0.33*xfang*xfang
-     xphi2 = 0.877 * (1.0 - 2.0*xphi1)
-     funG=xphi1 + xphi2*coszen                             !G-function: Projection of unit leaf area in direction of beam
-     
-     if(coszen.gt.0) then                                  !check if day or night
-       extKb=funG/coszen                                   !beam extinction coeff - black leaves
-     else
-       extKb=100.
-     end if
+    ! Goudriaan theory as used in Leuning et al 1995 (Eq Nos from Goudriaan & van Laar, 1994)
+    ! Effective extinction coefficient for diffuse radiation Goudriaan & van Laar Eq 6.6)
+    pi180   = 3.1416/180.
+    cozen15 = cos(pi180*15)
+    cozen45 = cos(pi180*45)
+    cozen75 = cos(pi180*75)
+    xK15    = xphi1/cozen15+xphi2
+    xK45    = xphi1/cozen45+xphi2
+    xK75    = xphi1/cozen75+xphi2
+    transd  = 0.308*exp(-xK15*FLAIT)+0.514*exp(-xK45*FLAIT)+     &
+        &       0.178*exp(-xK75*FLAIT)
+    extkd   = (-1./FLAIT)*alog(transd)
+    extkn   = extkd                        !N distribution coeff 
+    ! canopy reflection coefficients (Array indices: first;  1=VIS,  2=NIR
+    !                                             second; 1=beam, 2=diffuse
+    do nw=1,2                                                      !nw:1=VIS, 2=NIR
+        scatt(nw)  = tauL(nw)+rhoL(nw)                      !scattering coeff
+        if((1.-scatt(nw))<0.0)scatt(nw)=0.9999           ! Weng 10/31/2008
+        kpr(nw,1)  = extKb*sqrt(1.-scatt(nw))               !modified k beam scattered (6.20)
+        kpr(nw,2)  = extkd*sqrt(1.-scatt(nw))             !modified k diffuse (6.20)
+        rhoch      = (1.-sqrt(1.-scatt(nw)))/(1.+sqrt(1.-scatt(nw)))            !canopy reflection black horizontal leaves (6.19)
+        rhoc15     = 2.*xK15*rhoch/(xK15+extkd)                                !canopy reflection (6.21) diffuse
+        rhoc45     = 2.*xK45*rhoch/(xK45+extkd)
+        rhoc75     = 2.*xK75*rhoch/(xK75+extkd)
+        rhoc(nw,2) = 0.308*rhoc15+0.514*rhoc45+0.178*rhoc75
+        rhoc(nw,1) = 2.*extKb/(extKb+extkd)*rhoch                          !canopy reflection (6.21) beam 
+        reff(nw,1) = rhoc(nw,1)+(rhoS(nw)-rhoc(nw,1))   &                   !effective canopy-soil reflection coeff - beam (6.27)
+            &            *exp(-2.*kpr(nw,1)*FLAIT) 
+        reff(nw,2) = rhoc(nw,2)+(rhoS(nw)-rhoc(nw,2))   &                   !effective canopy-soil reflection coeff - diffuse (6.27)
+            &            *exp(-2.*kpr(nw,2)*FLAIT)  
+    enddo
 
-!     Goudriaan theory as used in Leuning et al 1995 (Eq Nos from Goudriaan & van Laar, 1994)
-!     Effective extinction coefficient for diffuse radiation Goudriaan & van Laar Eq 6.6)
-     pi180=3.1416/180.
-     cozen15=cos(pi180*15)
-     cozen45=cos(pi180*45)
-     cozen75=cos(pi180*75)
-     xK15=xphi1/cozen15+xphi2
-     xK45=xphi1/cozen45+xphi2
-     xK75=xphi1/cozen75+xphi2
-     transd=0.308*exp(-xK15*FLAIT)+0.514*exp(-xK45*FLAIT)+     &
-    &       0.178*exp(-xK75*FLAIT)
-     extkd=(-1./FLAIT)*alog(transd)
-     extkn=extkd                        !N distribution coeff 
-
-!canopy reflection coefficients (Array indices: first;  1=VIS,  2=NIR
-!                                               second; 1=beam, 2=diffuse
-     do nw=1,2                                                      !nw:1=VIS, 2=NIR
-      scatt(nw)=tauL(nw)+rhoL(nw)                      !scattering coeff
-      if((1.-scatt(nw))<0.0)scatt(nw)=0.9999           ! Weng 10/31/2008
-      kpr(nw,1)=extKb*sqrt(1.-scatt(nw))               !modified k beam scattered (6.20)
-      kpr(nw,2)=extkd*sqrt(1.-scatt(nw))             !modified k diffuse (6.20)
-      rhoch=(1.-sqrt(1.-scatt(nw)))/(1.+sqrt(1.-scatt(nw)))            !canopy reflection black horizontal leaves (6.19)
-      rhoc15=2.*xK15*rhoch/(xK15+extkd)                                !canopy reflection (6.21) diffuse
-      rhoc45=2.*xK45*rhoch/(xK45+extkd)
-      rhoc75=2.*xK75*rhoch/(xK75+extkd)
-      rhoc(nw,2)=0.308*rhoc15+0.514*rhoc45+0.178*rhoc75
-      rhoc(nw,1)=2.*extKb/(extKb+extkd)*rhoch                          !canopy reflection (6.21) beam 
-      reff(nw,1)=rhoc(nw,1)+(rhoS(nw)-rhoc(nw,1))   &                   !effective canopy-soil reflection coeff - beam (6.27)
-    &            *exp(-2.*kpr(nw,1)*FLAIT) 
-      reff(nw,2)=rhoc(nw,2)+(rhoS(nw)-rhoc(nw,2))   &                   !effective canopy-soil reflection coeff - diffuse (6.27)
-    &            *exp(-2.*kpr(nw,2)*FLAIT)  
-     enddo
-
-
-!     isothermal net radiation & radiation conductance at canopy top - needed to calc emair
-     call Radiso(flai,flait,Qabs,extkd,Tair,eairP,cpair,Patm, &
-    &            fbeam,airMa,Rconst,sigma,emleaf,emsoil,       &
-    &            emair,Rnstar,grdn)
-     TairK=Tair+273.2
-
-!     below      
-     do ng=1,5
+    ! isothermal net radiation & radiation conductance at canopy top - needed to calc emair
+    call Radiso(flai,flait,Qabs,extkd,Tair,eairP,cpair,Patm, &
+        &            fbeam,airMa,Rconst,sigma,emleaf,emsoil,       &
+        &            emair,Rnstar,grdn)
+    TairK=Tair+273.2
+    ! below      
+    do ng=1,5
         flai=gaussx(ng)*FLAIT
-!        radiation absorption for visible and near infra-red
+        ! radiation absorption for visible and near infra-red
         call goudriaan(FLAI,coszen,radabv,fbeam,reff,kpr,      &
-    &                  scatt,xfang,Qabs) 
-!        isothermal net radiation & radiation conductance at canopy top
+            &                  scatt,xfang,Qabs) 
+        ! isothermal net radiation & radiation conductance at canopy top
         call Radiso(flai,flait,Qabs,extkd,Tair,eairP,cpair,Patm,   &
-    &               fbeam,airMa,Rconst,sigma,emleaf,emsoil,        &
-    &               emair,Rnstar,grdn)
-        windUx=wind*exp(-extkU*flai)             !windspeed at depth xi
-        scalex=exp(-extkn*flai)                    !scale Vcmx0 & Jmax0
-        Vcmxx=Vcmx0*scalex
-        eJmxx=eJmx0*scalex
+            &       fbeam,airMa,Rconst,sigma,emleaf,emsoil,        &
+            &       emair,Rnstar,grdn)
+        windUx  = wind*exp(-extkU*flai)             !windspeed at depth xi
+        scalex  = exp(-extkn*flai)                    !scale Vcmx0 & Jmax0
+        Vcmxx   = Vcmx0*scalex
+        eJmxx   = eJmx0*scalex
         if(radabv(1).ge.10.0) then                          !check solar Radiation > 10 W/m2
-!           leaf stomata-photosynthesis-transpiration model - daytime
-           call agsean_day(Sps,Qabs,Rnstar,grdn,windUx,Tair,Dair,      &
-    &               co2ca,wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,  &
-    &               Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,  &
-    &               gsw0,alpha,stom_n,                                 &
-    &               Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,            &
-    &               Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,         &
-    &               Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci,gddonset)       
+            ! leaf stomata-photosynthesis-transpiration model - daytime
+            call agsean_day(Sps,Qabs,Rnstar,grdn,windUx,Tair,Dair,             &
+                &           co2ca,wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,  &
+                &           Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,  &
+                &           gsw0,alpha,stom_n,                                 &
+                &           Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,            &
+                &           Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,         &
+                &           Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci,gddonset)       
         else
            call agsean_ngt(Sps,Qabs,Rnstar,grdn,windUx,Tair,Dair,      &
-    &               co2ca,wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,  &
-    &               Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,  &
-    &               gsw0,alpha,stom_n,                                 &
-    &               Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,            &
-    &               Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,         &
-    &               Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci)
+                &           co2ca,wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,  &
+                &           Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,  &
+                &           gsw0,alpha,stom_n,                                 &
+                &           Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,            &
+                &           Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,         &
+                &           Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci)
         endif  
-        fslt=exp(-extKb*flai)                        !fraction of sunlit leaves
-        fshd=1.0-fslt                                !fraction of shaded leaves
-        Rnst1=Rnst1+fslt*Rnstar(1)*Gaussw(ng)*FLAIT  !Isothermal net rad`
-        Rnst2=Rnst2+fshd*Rnstar(2)*Gaussw(ng)*FLAIT
-        RnstL(ng)=Rnst1+Rnst2
-!
-        Qcan1=Qcan1+fslt*Qabs(1,1)*Gaussw(ng)*FLAIT  !visible
-        Qcan2=Qcan2+fshd*Qabs(1,2)*Gaussw(ng)*FLAIT
-        QcanL(ng)=Qcan1+Qcan2
-!
-        Rcan1=Rcan1+fslt*Qabs(2,1)*Gaussw(ng)*FLAIT  !NIR
-        Rcan2=Rcan2+fshd*Qabs(2,2)*Gaussw(ng)*FLAIT
-        RcanL(ng)=Rcan1+Rcan2
-!
+        fslt      = exp(-extKb*flai)                        !fraction of sunlit leaves
+        fshd      = 1.0-fslt                                !fraction of shaded leaves
+        Rnst1     = Rnst1+fslt*Rnstar(1)*Gaussw(ng)*FLAIT  !Isothermal net rad`
+        Rnst2     = Rnst2+fshd*Rnstar(2)*Gaussw(ng)*FLAIT
+        RnstL(ng) = Rnst1+Rnst2
+
+        Qcan1     = Qcan1+fslt*Qabs(1,1)*Gaussw(ng)*FLAIT  !visible
+        Qcan2     = Qcan2+fshd*Qabs(1,2)*Gaussw(ng)*FLAIT
+        QcanL(ng) = Qcan1+Qcan2
+
+        Rcan1     = Rcan1+fslt*Qabs(2,1)*Gaussw(ng)*FLAIT  !NIR
+        Rcan2     = Rcan2+fshd*Qabs(2,2)*Gaussw(ng)*FLAIT
+        RcanL(ng) = Rcan1+Rcan2
+
         if(Aleaf(1).lt.0.0)Aleaf(1)=0.0      !Weng 2/16/2006
         if(Aleaf(2).lt.0.0)Aleaf(2)=0.0      !Weng 2/16/2006
 
-        Acan1=Acan1+fslt*Aleaf(1)*Gaussw(ng)*FLAIT*stom_n    !amphi/hypostomatous
-        Acan2=Acan2+fshd*Aleaf(2)*Gaussw(ng)*FLAIT*stom_n
-        AcanL(ng)=Acan1+Acan2
+        Acan1     = Acan1+fslt*Aleaf(1)*Gaussw(ng)*FLAIT*stom_n    !amphi/hypostomatous
+        Acan2     = Acan2+fshd*Aleaf(2)*Gaussw(ng)*FLAIT*stom_n
+        AcanL(ng) = Acan1+Acan2
+        layer1(ng)= Aleaf(1)
+        layer2(ng)= Aleaf(2)
+        Ecan1     = Ecan1+fslt*Eleaf(1)*Gaussw(ng)*FLAIT
+        Ecan2     = Ecan2+fshd*Eleaf(2)*Gaussw(ng)*FLAIT
+        EcanL(ng) = Ecan1+Ecan2
 
-        layer1(ng)=Aleaf(1)
-        layer2(ng)=Aleaf(2)
+        Hcan1     = Hcan1+fslt*Hleaf(1)*Gaussw(ng)*FLAIT
+        Hcan2     = Hcan2+fshd*Hleaf(2)*Gaussw(ng)*FLAIT
+        HcanL(ng) = Hcan1+Hcan2
 
-        Ecan1=Ecan1+fslt*Eleaf(1)*Gaussw(ng)*FLAIT
-        Ecan2=Ecan2+fshd*Eleaf(2)*Gaussw(ng)*FLAIT
-        EcanL(ng)=Ecan1+Ecan2
-!
-        Hcan1=Hcan1+fslt*Hleaf(1)*Gaussw(ng)*FLAIT
-        Hcan2=Hcan2+fshd*Hleaf(2)*Gaussw(ng)*FLAIT
-        HcanL(ng)=Hcan1+Hcan2
-!
-        Gbwc1=Gbwc1+fslt*gbleaf(1)*Gaussw(ng)*FLAIT*stom_n
-        Gbwc2=Gbwc2+fshd*gbleaf(2)*Gaussw(ng)*FLAIT*stom_n
-!
-        Gswc1=Gswc1+fslt*gsleaf(1)*Gaussw(ng)*FLAIT*stom_n
-        Gswc2=Gswc2+fshd*gsleaf(2)*Gaussw(ng)*FLAIT*stom_n
-!
-        Tleaf1=Tleaf1+fslt*Tleaf(1)*Gaussw(ng)*FLAIT
-        Tleaf2=Tleaf2+fshd*Tleaf(2)*Gaussw(ng)*FLAIT
-     enddo  ! 5 layers
+        Gbwc1     = Gbwc1+fslt*gbleaf(1)*Gaussw(ng)*FLAIT*stom_n
+        Gbwc2     = Gbwc2+fshd*gbleaf(2)*Gaussw(ng)*FLAIT*stom_n
+        Gswc1     = Gswc1+fslt*gsleaf(1)*Gaussw(ng)*FLAIT*stom_n
+        Gswc2     = Gswc2+fshd*gsleaf(2)*Gaussw(ng)*FLAIT*stom_n
 
-     FLAIT1=(1.0-exp(-extKb*FLAIT))/extkb
-     Tleaf1=Tleaf1/FLAIT1
-     Tleaf2=Tleaf2/(FLAIT-FLAIT1)
+        Tleaf1    = Tleaf1+fslt*Tleaf(1)*Gaussw(ng)*FLAIT
+        Tleaf2    = Tleaf2+fshd*Tleaf(2)*Gaussw(ng)*FLAIT
+    enddo  ! 5 layers
 
-!     Soil surface energy and water fluxes
-!    Radiation absorbed by soil
-     Rsoilab1=fbeam*(1.-reff(1,1))*exp(-kpr(1,1)*FLAIT)        &
-    &         +(1.-fbeam)*(1.-reff(1,2))*exp(-kpr(1,2)*FLAIT)          !visible
-     Rsoilab2=fbeam*(1.-reff(2,1))*exp(-kpr(2,1)*FLAIT)        &
-    &         +(1.-fbeam)*(1.-reff(2,2))*exp(-kpr(2,2)*FLAIT)          !NIR
-     Rsoilab1=Rsoilab1*Radabv(1)
-     Rsoilab2=Rsoilab2*Radabv(2)
-!  
-     Tlk1=Tleaf1+273.2
-     Tlk2=Tleaf2+273.2
-!      temp1=-extkd*FLAIT
-     QLair=emair*sigma*(TairK**4)*exp(-extkd*FLAIT)
-     QLleaf=emleaf*sigma*(Tlk1**4)*exp(-extkb*FLAIT)           &
-    &      +emleaf*sigma*(Tlk2**4)*(1.0-exp(-extkb*FLAIT))
-     QLleaf=QLleaf*(1.0-exp(-extkd*FLAIT)) 
-     QLsoil=emsoil*sigma*(TairK**4)
-     Rsoilab3=(QLair+QLleaf)*(1.0-rhoS(3))-QLsoil
-
-!    Net radiation absorbed by soil
-!    the old version of net long-wave radiation absorbed by soils 
-!    (with isothermal assumption)
-!     Rsoil3=(sigma*TairK**4)*(emair-emleaf)*exp(-extkd*FLAIT)         !Longwave
-!     Rsoilab3=(1-rhoS(3))*Rsoil3
-
-!    Total radiation absorbed by soil    
-     Rsoilabs=Rsoilab1+Rsoilab2+Rsoilab3 
-
-!    thermodynamic parameters for air
-     TairK=Tair+273.2
-     rhocp=cpair*Patm*AirMa/(Rconst*TairK)
-     H2OLv=H2oLv0-2.365e3*Tair
-     slope=(esat(Tair+0.1)-esat(Tair))/0.1
-     psyc=Patm*cpair*AirMa/(H2OLv*H2OMw)
-     Cmolar=Patm/(Rconst*TairK)
-     fw1=AMIN1(AMAX1((FILDCP-wcl(1))/(FILDCP-WILTPT),0.05),1.0)
-     Rsoil=30.*exp(0.2/fw1)
-     rLAI=exp(FLAIT)
-!     latent heat flux into air from soil
-!           Eleaf(ileaf)=1.0*
-!     &     (slope*Y*Rnstar(ileaf)+rhocp*Dair/(rbH_L+raero))/    !2* Weng 0215
-!     &     (slope*Y+psyc*(rswv+rbw+raero)/(rbH_L+raero))
-     Esoil=(slope*(Rsoilabs-G)+rhocp*Dair/(raero+rLAI))/       &
-    &      (slope+psyc*(rsoil/(raero+rLAI)+1.))
-!     sensible heat flux into air from soil
-     Hsoil=Rsoilabs-Esoil-G
-
-     return
-     end 
+    FLAIT1 = (1.0-exp(-extKb*FLAIT))/extkb
+    Tleaf1 = Tleaf1/FLAIT1
+    Tleaf2 = Tleaf2/(FLAIT-FLAIT1)
+    ! Soil surface energy and water fluxes
+    ! Radiation absorbed by soil
+    Rsoilab1 = fbeam*(1.-reff(1,1))*exp(-kpr(1,1)*FLAIT)        &
+        &         +(1.-fbeam)*(1.-reff(1,2))*exp(-kpr(1,2)*FLAIT)          !visible
+    Rsoilab2 = fbeam*(1.-reff(2,1))*exp(-kpr(2,1)*FLAIT)        &
+        &         +(1.-fbeam)*(1.-reff(2,2))*exp(-kpr(2,2)*FLAIT)          !NIR
+    Rsoilab1 = Rsoilab1*Radabv(1)
+    Rsoilab2 = Rsoilab2*Radabv(2)
+     
+    Tlk1 = Tleaf1+273.2
+    Tlk2 = Tleaf2+273.2
+    ! temp1=-extkd*FLAIT
+    QLair    = emair*sigma*(TairK**4)*exp(-extkd*FLAIT)
+    QLleaf   = emleaf*sigma*(Tlk1**4)*exp(-extkb*FLAIT)           &
+        &      +emleaf*sigma*(Tlk2**4)*(1.0-exp(-extkb*FLAIT))
+    QLleaf   = QLleaf*(1.0-exp(-extkd*FLAIT)) 
+    QLsoil   = emsoil*sigma*(TairK**4)
+    Rsoilab3 = (QLair+QLleaf)*(1.0-rhoS(3))-QLsoil
+    ! Net radiation absorbed by soil
+    ! the old version of net long-wave radiation absorbed by soils 
+    ! (with isothermal assumption)
+    ! Rsoil3=(sigma*TairK**4)*(emair-emleaf)*exp(-extkd*FLAIT)         !Longwave
+    ! Rsoilab3=(1-rhoS(3))*Rsoil3
+    ! Total radiation absorbed by soil    
+    Rsoilabs=Rsoilab1+Rsoilab2+Rsoilab3 
+    ! thermodynamic parameters for air
+    TairK  = Tair+273.2
+    rhocp  = cpair*Patm*AirMa/(Rconst*TairK)
+    H2OLv  = H2oLv0-2.365e3*Tair
+    slope  = (esat(Tair+0.1)-esat(Tair))/0.1
+    psyc   = Patm*cpair*AirMa/(H2OLv*H2OMw)
+    Cmolar = Patm/(Rconst*TairK)
+    fw1    = AMIN1(AMAX1((FILDCP-wcl(1))/(FILDCP-WILTPT),0.05),1.0)
+    Rsoil  = 30.*exp(0.2/fw1)
+    rLAI   = exp(FLAIT)
+    ! latent heat flux into air from soil
+    !       Eleaf(ileaf)=1.0*
+    ! &     (slope*Y*Rnstar(ileaf)+rhocp*Dair/(rbH_L+raero))/    !2* Weng 0215
+    ! &     (slope*Y+psyc*(rswv+rbw+raero)/(rbH_L+raero))
+    Esoil = (slope*(Rsoilabs-G)+rhocp*Dair/(raero+rLAI))/       &
+        &      (slope+psyc*(rsoil/(raero+rLAI)+1.))
+    ! sensible heat flux into air from soil
+    Hsoil = Rsoilabs-Esoil-G
+    return
+end 
 
 
-     subroutine goudriaan(FLAI,coszen,radabv,fbeam,reff,kpr,   &
-        &                  scatt,xfang,Qabs)
-        
-   !    for spheric leaf angle distribution only
-   !    compute within canopy radiation (PAR and near infra-red bands)
-   !    using two-stream approximation (Goudriaan & vanLaar 1994)
-   !    tauL: leaf transmittance
-   !    rhoL: leaf reflectance
-   !    rhoS: soil reflectance
-   !    sfang XiL function of Ross (1975) - allows for departure from spherical LAD
-   !         (-1 vertical, +1 horizontal leaves, 0 spherical)
-   !    FLAI: canopy leaf area index
-   !    funG: Ross' G function
-   !    scatB: upscatter parameter for direct beam
-   !    scatD: upscatter parameter for diffuse
-   !    albedo: single scattering albedo
-   !    output:
-   !    Qabs(nwave,type), nwave=1 for visible; =2 for NIR,
-   !                       type=1 for sunlit;   =2 for shaded (W/m2)
-   
-         real radabv(2)
-         real Qabs(3,2),reff(3,2),kpr(3,2),scatt(2)
-         xu=coszen                                         !cos zenith angle
-         
-   !     Ross-Goudriaan function for G(u) (see Sellers 1985, Eq 13)
-         xphi1 = 0.5 - 0.633*xfang -0.33*xfang*xfang
-         xphi2 = 0.877 * (1.0 - 2.0*xphi1)
-         funG=xphi1 + xphi2*xu                             !G-function: Projection of unit leaf area in direction of beam
-         
-         if(coszen.gt.0) then                                  !check if day or night
-           extKb=funG/coszen                                   !beam extinction coeff - black leaves
-         else
-           extKb=100.
-         end if
-                          
-   ! Goudriaan theory as used in Leuning et al 1995 (Eq Nos from Goudriaan & van Laar, 1994)
-         do nw=1,2
-          Qd0=(1.-fbeam)*radabv(nw)                                          !diffuse incident radiation
-          Qb0=fbeam*radabv(nw)                                               !beam incident radiation
-          Qabs(nw,2)=Qd0*(kpr(nw,2)*(1.-reff(nw,2))*exp(-kpr(nw,2)*FLAI))+  & !absorbed radiation - shaded leaves, diffuse
-        &            Qb0*(kpr(nw,1)*(1.-reff(nw,1))*exp(-kpr(nw,1)*FLAI)-   & !beam scattered
-        &            extKb*(1.-scatt(nw))*exp(-extKb*FLAI))
-          Qabs(nw,1)=Qabs(nw,2)+extKb*Qb0*(1.-scatt(nw))                     !absorbed radiation - sunlit leaves 
-         end do
-         return
-         end
+subroutine goudriaan(FLAI,coszen,radabv,fbeam,reff,kpr,   &
+    &                scatt,xfang,Qabs)
+    ! for spheric leaf angle distribution only
+    ! compute within canopy radiation (PAR and near infra-red bands)
+    ! using two-stream approximation (Goudriaan & vanLaar 1994)
+    ! tauL: leaf transmittance
+    ! rhoL: leaf reflectance
+    ! rhoS: soil reflectance
+    ! sfang XiL function of Ross (1975) - allows for departure from spherical LAD
+    !     (-1 vertical, +1 horizontal leaves, 0 spherical)
+    ! FLAI: canopy leaf area index
+    ! funG: Ross' G function
+    ! scatB: upscatter parameter for direct beam
+    ! scatD: upscatter parameter for diffuse
+    ! albedo: single scattering albedo
+    ! output:
+    ! Qabs(nwave,type), nwave=1 for visible; =2 for NIR,
+    !                     type=1 for sunlit;   =2 for shaded (W/m2)
+    real radabv(2)
+    real Qabs(3,2),reff(3,2),kpr(3,2),scatt(2)
+    xu=coszen                                         !cos zenith angle
+    ! Ross-Goudriaan function for G(u) (see Sellers 1985, Eq 13)
+    xphi1 = 0.5 - 0.633*xfang -0.33*xfang*xfang
+    xphi2 = 0.877 * (1.0 - 2.0*xphi1)
+    funG  = xphi1 + xphi2*xu                             !G-function: Projection of unit leaf area in direction of beam
+    if(coszen.gt.0) then                                  !check if day or night
+        extKb=funG/coszen                                   !beam extinction coeff - black leaves
+    else
+        extKb=100.
+    end if
+    ! Goudriaan theory as used in Leuning et al 1995 (Eq Nos from Goudriaan & van Laar, 1994)
+    do nw=1,2
+        Qd0=(1.-fbeam)*radabv(nw)                                          !diffuse incident radiation
+        Qb0=fbeam*radabv(nw)                                               !beam incident radiation
+        Qabs(nw,2)=Qd0*(kpr(nw,2)*(1.-reff(nw,2))*exp(-kpr(nw,2)*FLAI))+  & !absorbed radiation - shaded leaves, diffuse
+            &            Qb0*(kpr(nw,1)*(1.-reff(nw,1))*exp(-kpr(nw,1)*FLAI)-   & !beam scattered
+            &            extKb*(1.-scatt(nw))*exp(-extKb*FLAI))
+        Qabs(nw,1)=Qabs(nw,2)+extKb*Qb0*(1.-scatt(nw))                     !absorbed radiation - sunlit leaves 
+    end do
+    return
+end
 
-     subroutine Radiso(flai,flait,Qabs,extkd,Tair,eairP,cpair,Patm,    &
-        &                  fbeam,airMa,Rconst,sigma,emleaf,emsoil,         &
-        &                  emair,Rnstar,grdn)
-   !     output
-   !     Rnstar(type): type=1 for sunlit; =2 for shaded leaves (W/m2)
-   !     23 Dec 1994
-   !     calculates isothermal net radiation for sunlit and shaded leaves under clear skies
-   !     implicit real (a-z)
-         real Rnstar(2)
-         real Qabs(3,2)
-         TairK=Tair+273.2
-   
-   ! thermodynamic properties of air
-         rhocp=cpair*Patm*airMa/(Rconst*TairK)   !volumetric heat capacity (J/m3/K)
-   
-   ! apparent atmospheric emissivity for clear skies (Brutsaert, 1975)
-         emsky=0.642*(eairP/Tairk)**(1./7)       !note eair in Pa
-        
-   ! apparent emissivity from clouds (Kimball et al 1982)
-         ep8z=0.24+2.98e-12*eairP*eairP*exp(3000/TairK)
-         tau8=amin1(1.0,1.0-ep8z*(1.4-0.4*ep8z))            !ensure tau8<1
-         emcloud=0.36*tau8*(1.-fbeam)*(1-10./TairK)**4      !10 from Tcloud = Tair-10
-   
-   ! apparent emissivity from sky plus clouds      
-   !      emair=emsky+emcloud
-   ! 20/06/96
-         emair=emsky
-   
-         if(emair.gt.1.0) emair=1.0
-         
-   ! net isothermal outgoing longwave radiation per unit leaf area at canopy
-   ! top & thin layer at flai (Note Rn* = Sn + Bn is used rather than Rn* = Sn - Bn in Leuning et al 1985)
-         Bn0=sigma*(TairK**4.)
-         Bnxi=Bn0*extkd*(exp(-extkd*flai)*(emair-emleaf)       &
+subroutine Radiso(flai,flait,Qabs,extkd,Tair,eairP,cpair,Patm,    &
+    &             fbeam,airMa,Rconst,sigma,emleaf,emsoil,         &
+    &             emair,Rnstar,grdn)
+    ! output
+    ! Rnstar(type): type=1 for sunlit; =2 for shaded leaves (W/m2)
+    ! 23 Dec 1994
+    ! calculates isothermal net radiation for sunlit and shaded leaves under clear skies
+    real Rnstar(2)
+    real Qabs(3,2)
+    TairK = Tair+273.2
+    ! thermodynamic properties of air
+    rhocp = cpair*Patm*airMa/(Rconst*TairK)   !volumetric heat capacity (J/m3/K)
+    ! apparent atmospheric emissivity for clear skies (Brutsaert, 1975)
+    emsky = 0.642*(eairP/Tairk)**(1./7)       !note eair in Pa
+    ! apparent emissivity from clouds (Kimball et al 1982)
+    ep8z  = 0.24+2.98e-12*eairP*eairP*exp(3000/TairK)
+    tau8  = amin1(1.0,1.0-ep8z*(1.4-0.4*ep8z))            !ensure tau8<1
+    emcloud=0.36*tau8*(1.-fbeam)*(1-10./TairK)**4      !10 from Tcloud = Tair-10
+    ! apparent emissivity from sky plus clouds      
+    ! emair=emsky+emcloud
+    ! 20/06/96
+    emair=emsky
+    if(emair.gt.1.0) emair=1.0
+    ! net isothermal outgoing longwave radiation per unit leaf area at canopy
+    ! top & thin layer at flai (Note Rn* = Sn + Bn is used rather than Rn* = Sn - Bn in Leuning et al 1985)
+    Bn0  = sigma*(TairK**4.)
+    Bnxi = Bn0*extkd*(exp(-extkd*flai)*(emair-emleaf)       &
         &    + exp(-extkd*(flait-flai))*(emsoil-emleaf))
-   !     isothermal net radiation per unit leaf area for thin layer of sunlit and
-   !     shaded leaves
-         Rnstar(1)=Qabs(1,1)+Qabs(2,1)+Bnxi
-         Rnstar(2)=Qabs(1,2)+Qabs(2,2)+Bnxi
-   !     radiation conductance (m/s) @ flai
-         grdn=4.*sigma*(TairK**3.)*extkd*emleaf*               &       ! corrected by Jiang Jiang 2015/9/29
+    ! isothermal net radiation per unit leaf area for thin layer of sunlit and
+    ! shaded leaves
+    Rnstar(1)=Qabs(1,1)+Qabs(2,1)+Bnxi
+    Rnstar(2)=Qabs(1,2)+Qabs(2,2)+Bnxi
+    ! radiation conductance (m/s) @ flai
+    grdn = 4.*sigma*(TairK**3.)*extkd*emleaf*               &       ! corrected by Jiang Jiang 2015/9/29
         &    (exp(-extkd*flai)+exp(-extkd*(flait-flai)))       &
         &    /rhocp
-         return
-         end
-   !     ****************************************************************************
-         subroutine agsean_day(Sps,Qabs,Rnstar,grdn,windUx,Tair,Dair,      &
-        &               co2ca,wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,  &
-        &               Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,  &
-        &               gsw0,alpha,stom_n,                                 &
-        &               Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,            &
-        &               Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,         &
-        &               Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci,gddonset)
-   
-   !    implicit real (a-z)
-         integer kr1,ileaf
-         real Aleaf(2),Eleaf(2),Hleaf(2),Tleaf(2),co2ci(2)
-         real gbleaf(2), gsleaf(2)
-         real Qabs(3,2),Rnstar(2)
-   !    thermodynamic parameters for air
-         TairK=Tair+273.2
-         rhocp=cpair*Patm*AirMa/(Rconst*TairK)
-         H2OLv=H2oLv0-2.365e3*Tair
-         slope=(esat(Tair+0.1)-esat(Tair))/0.1
-         psyc=Patm*cpair*AirMa/(H2OLv*H2OMw)
-         Cmolar=Patm/(Rconst*TairK)
-         weighJ=1.0
-   !    boundary layer conductance for heat - single sided, forced convection
-   !    (Monteith 1973, P106 & notes dated 23/12/94)
-         if(windUx/wleaf>=0.0)then
-             gbHu=0.003*sqrt(windUx/wleaf)    !m/s
-         else
-             gbHu=0.003 !*sqrt(-windUx/wleaf)
-         endif         ! Weng 10/31/2008
-   !     raero=0.0                        !aerodynamic resistance s/m
-         do ileaf=1,2              ! loop over sunlit and shaded leaves
-   !        first estimate of leaf temperature - assume air temp
-            Tleaf(ileaf)=Tair
-            Tlk=Tleaf(ileaf)+273.2    !Tleaf to deg K
-   !        first estimate of deficit at leaf surface - assume Da
-            Dleaf=Dair                !Pa
-   !        first estimate for co2cs
-            co2cs=co2ca               !mol/mol
-            Qapar = (4.6e-6)*Qabs(1,ileaf)
-   !    ********************************************************************
-            kr1=0                     !iteration counter for LE
-   !        return point for evaporation iteration
-            do               !iteration for leaf temperature
-   !          single-sided boundary layer conductance - free convection (see notes 23/12/94)
-              Gras=1.595e8*ABS(Tleaf(ileaf)-Tair)*(wleaf**3.)     !Grashof
-              gbHf=0.5*Dheat*(Gras**0.25)/wleaf
-              gbH=gbHu+gbHf                         !m/s
-              rbH=1./gbH                            !b/l resistance to heat transfer
-              rbw=0.93*rbH                          !b/l resistance to water vapour
-   !          Y factor for leaf: stom_n = 1.0 for hypostomatous leaf;  stom_n = 2.0 for amphistomatous leaf
-              rbH_L=rbH*stom_n/2.                   !final b/l resistance for heat  
-              rrdn=1./grdn
-              Y=1./(1.+ (rbH_L+raero)/rrdn)
-   !          boundary layer conductance for CO2 - single side only (mol/m2/s)
-              gbc=Cmolar*gbH/1.32            !mol/m2/s
-              gsc0=gsw0/1.57                 !convert conductance for H2O to that for CO2
-              varQc=0.0
-              weighR=1.0
-              call photosyn(Sps,CO2Ca,CO2Cs,Dleaf,Tlk,Qapar,Gbc,   &   !Qaparx<-Qapar,Gbcx<-Gsc0
-        &         theta,a1,Ds0,fwsoil,varQc,weighR,                &
-        &         gsc0,alpha,Vcmxx,eJmxx,weighJ,                   &
-        &         conKc0,conKo0,Ekc,Eko,o2ci,Rconst,Trefk,         &
-        &         Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,       &
-        &         Aleafx,Gscx,gddonset)  !outputs
-   !          choose smaller of Ac, Aq
-              Aleaf(ileaf) = Aleafx      !0.7 Weng 3/22/2006          !mol CO2/m2/s
-   !          calculate new values for gsc, cs (Lohammer model)
-              co2cs = co2ca-Aleaf(ileaf)/gbc
-              co2Ci(ileaf) = co2cs-Aleaf(ileaf)/gscx
-   !          scale variables
-   !           gsw=gscx*1.56      !gsw in mol/m2/s, oreginal:gsw=gsc0*1.56,Weng20060215
-              gsw=gscx*1.56       !gsw in mol/m2/s, oreginal:gsw=gscx*1.56,Weng20090226
-              gswv=gsw/Cmolar                           !gsw in m/s
-              rswv=1./gswv
-   !          calculate evap'n using combination equation with current estimate of gsw
-              Eleaf(ileaf)=1.0*                                    &
-        &     (slope*Y*Rnstar(ileaf)+rhocp*Dair/(rbH_L+raero))/    &   !2* Weng 0215
-        &     (slope*Y+psyc*(rswv+rbw+raero)/(rbH_L+raero))        
-   
-   !          calculate sensible heat flux
-              Hleaf(ileaf)=Y*(Rnstar(ileaf)-Eleaf(ileaf))
-   !          calculate new leaf temperature (K)
-              Tlk1=273.2+Tair+Hleaf(ileaf)*(rbH/2.+raero)/rhocp
-   !          calculate Dleaf use LE=(rhocp/psyc)*gsw*Ds
-              Dleaf=psyc*Eleaf(ileaf)/(rhocp*gswv)
-              gbleaf(ileaf)=gbc*1.32*1.075
-              gsleaf(ileaf)=gsw
-   !          compare current and previous leaf temperatures
-              if(abs(Tlk1-Tlk).le.0.1) exit ! original is 0.05 C Weng 10/31/2008
-   !          update leaf temperature  ! leaf temperature calculation has many problems! Weng 10/31/2008
-              Tlk=Tlk1
-              Tleaf(ileaf)=Tlk1-273.2
-              kr1=kr1+1
-              if(kr1 > 500)then
-                  Tlk=TairK
-                  exit
-              endif
-              if(Tlk < 200.)then
-                   Tlk=TairK
-                   exit 
-              endif                     ! Weng 10/31/2008
-   !        goto 100                          !solution not found yet
-            enddo
-   ! 10  continue
-         enddo
-         return
-         end
-   !     ****************************************************************************
-         subroutine agsean_ngt(Sps,Qabs,Rnstar,grdn,windUx,Tair,Dair,co2ca,    &
-        &               wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,            &
-        &               Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,      &
-        &               gsw0,alpha,stom_n,                                     &
-        &               Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,                &
-        &               Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,             &
-        &               Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci)
-   !    implicit real (a-z)
-         integer kr1,ileaf
-         real Aleaf(2),Eleaf(2),Hleaf(2),Tleaf(2),co2ci(2)
-         real gbleaf(2), gsleaf(2)
-         real Qabs(3,2),Rnstar(2)
-   !    thermodynamic parameters for air
-         TairK=Tair+273.2
-         rhocp=cpair*Patm*AirMa/(Rconst*TairK)
-         H2OLv=H2oLv0-2.365e3*Tair
-         slope=(esat(Tair+0.1)-esat(Tair))/0.1
-         psyc=Patm*cpair*AirMa/(H2OLv*H2OMw)
-         Cmolar=Patm/(Rconst*TairK)
-         weighJ=1.0
-   
-   !     boundary layer conductance for heat - single sided, forced convection
-   !     (Monteith 1973, P106 & notes dated 23/12/94)
-         gbHu=0.003*sqrt(windUx/wleaf)    !m/s
-   !     raero=0.0                        !aerodynamic resistance s/m
-   
-         do ileaf=1,2                  ! loop over sunlit and shaded leaves
-   !        first estimate of leaf temperature - assume air temp
-            Tleaf(ileaf)=Tair
-            Tlk=Tleaf(ileaf)+273.2    !Tleaf to deg K
-   !        first estimate of deficit at leaf surface - assume Da
-            Dleaf=Dair                !Pa
-   !        first estimate for co2cs
-            co2cs=co2ca               !mol/mol
-            Qapar = (4.6e-6)*Qabs(1,ileaf)
-   !        ********************************************************************
-            kr1=0                     !iteration counter for LE
-            do
-   !100        continue !    return point for evaporation iteration
-   !           single-sided boundary layer conductance - free convection (see notes 23/12/94)
-               Gras=1.595e8*abs(Tleaf(ileaf)-Tair)*(wleaf**3)     !Grashof
-               gbHf=0.5*Dheat*(Gras**0.25)/wleaf
-               gbH=gbHu+gbHf                         !m/s
-               rbH=1./gbH                            !b/l resistance to heat transfer
-               rbw=0.93*rbH                          !b/l resistance to water vapour
-   !           Y factor for leaf: stom_n = 1.0 for hypostomatous leaf;  stom_n = 2.0 for amphistomatous leaf
-               rbH_L=rbH*stom_n/2.                   !final b/l resistance for heat  
-               rrdn=1./grdn
-               Y=1./(1.+ (rbH_L+raero)/rrdn)
-   !           boundary layer conductance for CO2 - single side only (mol/m2/s)
-               gbc=Cmolar*gbH/1.32            !mol/m2/s
-               gsc0=gsw0/1.57                        !convert conductance for H2O to that for CO2
-               varQc=0.0                  
-               weighR=1.0
-   !           respiration      
-               Aleafx=-0.0089*Vcmxx*exp(0.069*(Tlk-293.2))
-               gsc=gsc0
-   !           choose smaller of Ac, Aq
-               Aleaf(ileaf) = Aleafx                     !mol CO2/m2/s
-   !           calculate new values for gsc, cs (Lohammer model)
-               co2cs = co2ca-Aleaf(ileaf)/gbc
-               co2Ci(ileaf) = co2cs-Aleaf(ileaf)/gsc
-   !           scale variables
-               gsw=gsc*1.56                              !gsw in mol/m2/s
-               gswv=gsw/Cmolar                           !gsw in m/s
-               rswv=1./gswv
-   !           calculate evap'n using combination equation with current estimate of gsw
-               Eleaf(ileaf)=                                       &
-        &      (slope*Y*Rnstar(ileaf)+rhocp*Dair/(rbH_L+raero))/   &
-        &      (slope*Y+psyc*(rswv+rbw+raero)/(rbH_L+raero))
-   !           calculate sensible heat flux
-               Hleaf(ileaf)=Y*(Rnstar(ileaf)-Eleaf(ileaf))
-   !           calculate new leaf temperature (K)
-               Tlk1=273.2+Tair+Hleaf(ileaf)*(rbH/2.+raero)/rhocp
-   !           calculate Dleaf use LE=(rhocp/psyc)*gsw*Ds
-               Dleaf=psyc*Eleaf(ileaf)/(rhocp*gswv)
-               gbleaf(ileaf)=gbc*1.32*1.075
-               gsleaf(ileaf)=gsw
-   
-   !          compare current and previous leaf temperatures
-               if(abs(Tlk1-Tlk).le.0.1)exit
-               if(kr1.gt.500)exit
-   !           update leaf temperature
-               Tlk=Tlk1 
-               Tleaf(ileaf)=Tlk1-273.2
-               kr1=kr1+1
-            enddo                          !solution not found yet
-   10    continue
-         enddo
-         return
-         end
+    return
+end
 
-         subroutine photosyn(Sps,CO2Ca,CO2Csx,Dleafx,Tlkx,Qaparx,Gbcx, &
-            &         theta,a1,Ds0,fwsoil,varQc,weighR,                    &
-            &         g0,alpha,                                            &
-            &         Vcmx1,eJmx1,weighJ,conKc0,conKo0,Ekc,Eko,o2ci,       &
-            &         Rconst,Trefk,Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,  &
-            &         Aleafx,Gscx,gddonset)
-       
-       !     calculate Vcmax, Jmax at leaf temp (Eq 9, Harley et al 1992)
-       !     turned on by Weng, 2012-03-13
-       !     VcmxT = Vjmax(Tlkx,Trefk,Vcmx1,Eavm,Edvm,Rconst,Entrpy)
-       !     eJmxT = Vjmax(Tlkx,Trefk,eJmx1,Eajm,Edjm,Rconst,Entrpy)
-             CO2Csx=AMAX1(CO2Csx,0.6*CO2Ca)
-       !    check if it is dark - if so calculate respiration and g0 to assign conductance 
-             if(Qaparx.le.0.) then                            !night, umol quanta/m2/s
-               Aleafx=-0.0089*Vcmx1*exp(0.069*(Tlkx-293.2))   ! original: 0.0089 Weng 3/22/2006
-               Gscx=g0
-             endif
-       !     calculate  Vcmax, Jmax at leaf temp using Reed et al (1976) function J appl Ecol 13:925
-             TminV=gddonset/10.  ! original -5.        !-Jiang Jiang 2015/10/13
-             TmaxV=50.
-             ToptV=35.
-             
-             TminJ=TminV
-             TmaxJ=TmaxV
-             ToptJ=ToptV 
-             
-             Tlf=Tlkx-273.2
-             VcmxT=VJtemp(Tlf,TminV,TmaxV,ToptV,Vcmx1)
-             eJmxT=VJtemp(Tlf,TminJ,TmaxJ,ToptJ,eJmx1)      
-       !     calculate J, the asymptote for RuBP regeneration rate at given Q
-             eJ = weighJ*fJQres(eJmxT,alpha,Qaparx,theta)
-       !     calculate Kc, Ko, Rd gamma*  & gamma at leaf temp
-             conKcT = EnzK(Tlkx,Trefk,conKc0,Rconst,Ekc)
-             conKoT = EnzK(Tlkx,Trefk,conKo0,Rconst,Eko)
-       !     following de Pury 1994, eq 7, make light respiration a fixed proportion of
-       !     Vcmax
-             Rd = 0.0089*VcmxT*weighR                              !de Pury 1994, Eq7
-             Tdiff=Tlkx-Trefk
-             gammas = gam0*(1.+gam1*Tdiff+gam2*Tdiff*Tdiff)       !gamma*
-       !     gamma = (gammas+conKcT*(1.+O2ci/conKoT)*Rd/VcmxT)/(1.-Rd/VcmxT)
-             gamma = 0.0
-       !     ***********************************************************************
-       !     Analytical solution for ci. This is the ci which satisfies supply and demand
-       !     functions simultaneously
-       !     calculate X using Lohammer model, and scale for soil moisture
-             a1= 1./(1.-0.7)
-             X = a1*fwsoil/((co2csx - gamma)*(1.0 + Dleafx/Ds0))
-       !     calculate solution for ci when Rubisco activity limits A
-             Gma = VcmxT  
-             Bta = conKcT*(1.0+ o2ci/conKoT)
-             call ciandA(Gma,Bta,g0,X,Rd,co2Csx,gammas,co2ci2,Acx)
-       !     calculate +ve root for ci when RuBP regeneration limits A
-             Gma = eJ/4.
-             Bta = 2.*gammas
-       !    calculate coefficients for quadratic equation for ci
-             call ciandA(Gma,Bta,g0,X,Rd,co2Csx,gammas,co2ci4,Aqx)
-       !     choose smaller of Ac, Aq
-             sps=AMAX1(0.001,sps)                  !Weng, 3/30/2006
-             Aleafx = (amin1(Acx,Aqx) - Rd) !*sps     ! Weng 4/4/2006
-       !      if(Aleafx.lt.0.0) Aleafx=0.0    ! by Weng 3/21/2006
-       !    calculate new values for gsc, cs (Lohammer model)
-             CO2csx = co2ca-Aleafx/Gbcx
-             Gscx=g0 + X*Aleafx  ! revised by Weng
-             return
-             end
+
+! ==============================================================================
+subroutine agsean_day(Sps,Qabs,Rnstar,grdn,windUx,Tair,Dair,      &
+    &               co2ca,wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,  &
+    &               Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,  &
+    &               gsw0,alpha,stom_n,                                 &
+    &               Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,            &
+    &               Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,         &
+    &               Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci,gddonset)
+    integer kr1,ileaf
+    real Aleaf(2),Eleaf(2),Hleaf(2),Tleaf(2),co2ci(2)
+    real gbleaf(2), gsleaf(2)
+    real Qabs(3,2),Rnstar(2)
+    ! thermodynamic parameters for air
+    TairK  = Tair+273.2
+    rhocp  = cpair*Patm*AirMa/(Rconst*TairK)
+    H2OLv  = H2oLv0-2.365e3*Tair
+    slope  = (esat(Tair+0.1)-esat(Tair))/0.1
+    psyc   = Patm*cpair*AirMa/(H2OLv*H2OMw)
+    Cmolar = Patm/(Rconst*TairK)
+    weighJ = 1.0
+    ! boundary layer conductance for heat - single sided, forced convection
+    ! (Monteith 1973, P106 & notes dated 23/12/94)
+    if(windUx/wleaf>=0.0)then
+        gbHu = 0.003*sqrt(windUx/wleaf)    !m/s
+    else
+        gbHu = 0.003 !*sqrt(-windUx/wleaf)
+    endif         ! Weng 10/31/2008
+    ! raero=0.0                        !aerodynamic resistance s/m
+    do ileaf=1,2              ! loop over sunlit and shaded leaves
+        ! first estimate of leaf temperature - assume air temp
+        Tleaf(ileaf)=Tair
+        Tlk   = Tleaf(ileaf)+273.2    !Tleaf to deg K
+        ! first estimate of deficit at leaf surface - assume Da
+        Dleaf = Dair                !Pa
+        ! first estimate for co2cs
+        co2cs = co2ca               !mol/mol
+        Qapar = (4.6e-6)*Qabs(1,ileaf)
+        ! ---------------------------------------------------------------
+        kr1=0                     !iteration counter for LE
+        ! return point for evaporation iteration
+        do               !iteration for leaf temperature
+            ! single-sided boundary layer conductance - free convection (see notes 23/12/94)
+            Gras  = 1.595e8*ABS(Tleaf(ileaf)-Tair)*(wleaf**3.)     !Grashof
+            gbHf  = 0.5*Dheat*(Gras**0.25)/wleaf
+            gbH   = gbHu+gbHf                         !m/s
+            rbH   = 1./gbH                            !b/l resistance to heat transfer
+            rbw   = 0.93*rbH                          !b/l resistance to water vapour
+            ! Y factor for leaf: stom_n = 1.0 for hypostomatous leaf;  stom_n = 2.0 for amphistomatous leaf
+            rbH_L = rbH*stom_n/2.                   !final b/l resistance for heat  
+            rrdn  = 1./grdn
+            Y = 1./(1.+ (rbH_L+raero)/rrdn)
+            ! boundary layer conductance for CO2 - single side only (mol/m2/s)
+            gbc    = Cmolar*gbH/1.32            !mol/m2/s
+            gsc0   = gsw0/1.57                 !convert conductance for H2O to that for CO2
+            varQc  = 0.0
+            weighR = 1.0
+            call photosyn(Sps,CO2Ca,CO2Cs,Dleaf,Tlk,Qapar,Gbc,             &   !Qaparx<-Qapar,Gbcx<-Gsc0
+                &         theta,a1,Ds0,fwsoil,varQc,weighR,                &
+                &         gsc0,alpha,Vcmxx,eJmxx,weighJ,                   &
+                &         conKc0,conKo0,Ekc,Eko,o2ci,Rconst,Trefk,         &
+                &         Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,       &
+                &         Aleafx,Gscx,gddonset)  !outputs
+            ! choose smaller of Ac, Aq
+            Aleaf(ileaf) = Aleafx      !0.7 Weng 3/22/2006          !mol CO2/m2/s
+            ! calculate new values for gsc, cs (Lohammer model)
+            co2cs = co2ca-Aleaf(ileaf)/gbc
+            co2Ci(ileaf) = co2cs-Aleaf(ileaf)/gscx
+            ! scale variables
+            ! gsw=gscx*1.56      !gsw in mol/m2/s, oreginal:gsw=gsc0*1.56,Weng20060215
+            gsw  = gscx*1.56       !gsw in mol/m2/s, oreginal:gsw=gscx*1.56,Weng20090226
+            gswv = gsw/Cmolar                           !gsw in m/s
+            rswv = 1./gswv
+            ! calculate evap'n using combination equation with current estimate of gsw
+            Eleaf(ileaf)=1.0*(slope*Y*Rnstar(ileaf)+rhocp*Dair/(rbH_L+raero))/    &   !2* Weng 0215
+                &     (slope*Y+psyc*(rswv+rbw+raero)/(rbH_L+raero))        
+            ! calculate sensible heat flux
+            Hleaf(ileaf)=Y*(Rnstar(ileaf)-Eleaf(ileaf))
+            ! calculate new leaf temperature (K)
+            Tlk1  = 273.2+Tair+Hleaf(ileaf)*(rbH/2.+raero)/rhocp
+            ! calculate Dleaf use LE=(rhocp/psyc)*gsw*Ds
+            Dleaf = psyc*Eleaf(ileaf)/(rhocp*gswv)
+            gbleaf(ileaf)=gbc*1.32*1.075
+            gsleaf(ileaf)=gsw
+            ! compare current and previous leaf temperatures
+            if(abs(Tlk1-Tlk).le.0.1) exit ! original is 0.05 C Weng 10/31/2008
+            ! update leaf temperature  ! leaf temperature calculation has many problems! Weng 10/31/2008
+            Tlk = Tlk1
+            Tleaf(ileaf)=Tlk1-273.2
+            kr1 = kr1+1
+            if(kr1 > 500)then
+                Tlk = TairK
+                exit
+            endif
+            if(Tlk < 200.)then
+                Tlk=TairK
+                exit 
+            endif                     ! Weng 10/31/2008
+            ! goto 100                          !solution not found yet
+        enddo
+        ! 10  continue
+    enddo
+    return
+end
+
+! ================================================================================
+subroutine agsean_ngt(Sps,Qabs,Rnstar,grdn,windUx,Tair,Dair,co2ca,    &
+    &               wleaf,raero,theta,a1,Ds0,fwsoil,idoy,hours,            &
+    &               Rconst,cpair,Patm,Trefk,H2OLv0,AirMa,H2OMw,Dheat,      &
+    &               gsw0,alpha,stom_n,                                     &
+    &               Vcmxx,eJmxx,conKc0,conKo0,Ekc,Eko,o2ci,                &
+    &               Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,             &
+    &               Aleaf,Eleaf,Hleaf,Tleaf,gbleaf,gsleaf,co2ci)
+    integer kr1,ileaf
+    real Aleaf(2),Eleaf(2),Hleaf(2),Tleaf(2),co2ci(2)
+    real gbleaf(2), gsleaf(2)
+    real Qabs(3,2),Rnstar(2)
+    ! thermodynamic parameters for air
+    TairK  = Tair+273.2
+    rhocp  = cpair*Patm*AirMa/(Rconst*TairK)
+    H2OLv  = H2oLv0-2.365e3*Tair
+    slope  = (esat(Tair+0.1)-esat(Tair))/0.1
+    psyc   = Patm*cpair*AirMa/(H2OLv*H2OMw)
+    Cmolar = Patm/(Rconst*TairK)
+    weighJ = 1.0
+    ! boundary layer conductance for heat - single sided, forced convection
+    ! (Monteith 1973, P106 & notes dated 23/12/94)
+    gbHu = 0.003*sqrt(windUx/wleaf)     ! m/s
+    ! raero=0.0                         ! aerodynamic resistance s/m
+    do ileaf=1,2                        ! loop over sunlit and shaded leaves
+        ! first estimate of leaf temperature - assume air temp
+        Tleaf(ileaf)=Tair
+        Tlk   = Tleaf(ileaf)+273.2    !Tleaf to deg K
+        ! first estimate of deficit at leaf surface - assume Da
+        Dleaf = Dair                !Pa
+        ! first estimate for co2cs
+        co2cs = co2ca               !mol/mol
+        Qapar = (4.6e-6)*Qabs(1,ileaf)
+        !        ********************************************************************
+        kr1   = 0                     !iteration counter for LE
+        do
+            ! 100        continue !    return point for evaporation iteration
+            ! single-sided boundary layer conductance - free convection (see notes 23/12/94)
+            Gras = 1.595e8*abs(Tleaf(ileaf)-Tair)*(wleaf**3)     !Grashof
+            gbHf = 0.5*Dheat*(Gras**0.25)/wleaf
+            gbH  = gbHu+gbHf                         !m/s
+            rbH  = 1./gbH                            !b/l resistance to heat transfer
+            rbw  = 0.93*rbH                          !b/l resistance to water vapour
+            ! Y factor for leaf: stom_n = 1.0 for hypostomatous leaf;  stom_n = 2.0 for amphistomatous leaf
+            rbH_L= rbH*stom_n/2.                   !final b/l resistance for heat  
+            rrdn = 1./grdn
+            Y    = 1./(1.+ (rbH_L+raero)/rrdn)
+            ! boundary layer conductance for CO2 - single side only (mol/m2/s)
+            gbc    = Cmolar*gbH/1.32            !mol/m2/s
+            gsc0   = gsw0/1.57                        !convert conductance for H2O to that for CO2
+            varQc  = 0.0                  
+            weighR = 1.0
+            ! respiration      
+            Aleafx = -0.0089*Vcmxx*exp(0.069*(Tlk-293.2))
+            gsc    = gsc0
+            ! choose smaller of Ac, Aq
+            Aleaf(ileaf) = Aleafx                     !mol CO2/m2/s
+            ! calculate new values for gsc, cs (Lohammer model)
+            co2cs = co2ca-Aleaf(ileaf)/gbc
+            co2Ci(ileaf) = co2cs-Aleaf(ileaf)/gsc
+            ! scale variables
+            gsw  = gsc*1.56                              !gsw in mol/m2/s
+            gswv = gsw/Cmolar                           !gsw in m/s
+            rswv = 1./gswv
+            ! calculate evap'n using combination equation with current estimate of gsw
+            Eleaf(ileaf) = (slope*Y*Rnstar(ileaf)+rhocp*Dair/(rbH_L+raero))/   &
+                &          (slope*Y+psyc*(rswv+rbw+raero)/(rbH_L+raero))
+            ! calculate sensible heat flux
+            Hleaf(ileaf) = Y*(Rnstar(ileaf)-Eleaf(ileaf))
+            ! calculate new leaf temperature (K)
+            Tlk1  = 273.2+Tair+Hleaf(ileaf)*(rbH/2.+raero)/rhocp
+            ! calculate Dleaf use LE=(rhocp/psyc)*gsw*Ds
+            Dleaf         = psyc*Eleaf(ileaf)/(rhocp*gswv)
+            gbleaf(ileaf) = gbc*1.32*1.075
+            gsleaf(ileaf) = gsw
+            ! compare current and previous leaf temperatures
+            if(abs(Tlk1-Tlk).le.0.1)exit
+            if(kr1.gt.500)exit
+            ! update leaf temperature
+            Tlk = Tlk1 
+            Tleaf(ileaf)=Tlk1-273.2
+            kr1 = kr1+1
+        enddo                          !solution not found yet
+    10    continue
+    enddo
+    return
+end
+
+subroutine photosyn(Sps,CO2Ca,CO2Csx,Dleafx,Tlkx,Qaparx,Gbcx, &
+    &         theta,a1,Ds0,fwsoil,varQc,weighR,                    &
+    &         g0,alpha,                                            &
+    &         Vcmx1,eJmx1,weighJ,conKc0,conKo0,Ekc,Eko,o2ci,       &
+    &         Rconst,Trefk,Eavm,Edvm,Eajm,Edjm,Entrpy,gam0,gam1,gam2,  &
+    &         Aleafx,Gscx,gddonset)
+    ! calculate Vcmax, Jmax at leaf temp (Eq 9, Harley et al 1992)
+    ! turned on by Weng, 2012-03-13
+    ! VcmxT = Vjmax(Tlkx,Trefk,Vcmx1,Eavm,Edvm,Rconst,Entrpy)
+    ! eJmxT = Vjmax(Tlkx,Trefk,eJmx1,Eajm,Edjm,Rconst,Entrpy)
+    CO2Csx=AMAX1(CO2Csx,0.6*CO2Ca)
+    ! check if it is dark - if so calculate respiration and g0 to assign conductance 
+    if(Qaparx.le.0.) then                            !night, umol quanta/m2/s
+        Aleafx = -0.0089*Vcmx1*exp(0.069*(Tlkx-293.2))   ! original: 0.0089 Weng 3/22/2006
+        Gscx   = g0
+    endif
+    ! calculate  Vcmax, Jmax at leaf temp using Reed et al (1976) function J appl Ecol 13:925
+    TminV = gddonset/10.  ! original -5.        !-Jiang Jiang 2015/10/13
+    TmaxV = 50.
+    ToptV = 35. 
+    TminJ = TminV
+    TmaxJ = TmaxV
+    ToptJ = ToptV  
+    Tlf   = Tlkx-273.2
+    VcmxT = VJtemp(Tlf,TminV,TmaxV,ToptV,Vcmx1)
+    eJmxT = VJtemp(Tlf,TminJ,TmaxJ,ToptJ,eJmx1)      
+    ! calculate J, the asymptote for RuBP regeneration rate at given Q
+    eJ = weighJ*fJQres(eJmxT,alpha,Qaparx,theta)
+    ! calculate Kc, Ko, Rd gamma*  & gamma at leaf temp
+    conKcT = EnzK(Tlkx,Trefk,conKc0,Rconst,Ekc)
+    conKoT = EnzK(Tlkx,Trefk,conKo0,Rconst,Eko)
+    ! following de Pury 1994, eq 7, make light respiration a fixed proportion of
+    ! Vcmax
+    Rd    = 0.0089*VcmxT*weighR                              !de Pury 1994, Eq7
+    Tdiff = Tlkx-Trefk
+    gammas = gam0*(1.+gam1*Tdiff+gam2*Tdiff*Tdiff)       !gamma*
+    ! gamma = (gammas+conKcT*(1.+O2ci/conKoT)*Rd/VcmxT)/(1.-Rd/VcmxT)
+    gamma = 0.0
+    ! ***********************************************************************
+    ! Analytical solution for ci. This is the ci which satisfies supply and demand
+    ! functions simultaneously
+    ! calculate X using Lohammer model, and scale for soil moisture
+    a1 = 1./(1.-0.7)
+    X  = a1*fwsoil/((co2csx - gamma)*(1.0 + Dleafx/Ds0))
+    ! calculate solution for ci when Rubisco activity limits A
+    Gma = VcmxT  
+    Bta = conKcT*(1.0+ o2ci/conKoT)
+    call ciandA(Gma,Bta,g0,X,Rd,co2Csx,gammas,co2ci2,Acx)
+    ! calculate +ve root for ci when RuBP regeneration limits A
+    Gma = eJ/4.
+    Bta = 2.*gammas
+    ! calculate coefficients for quadratic equation for ci
+    call ciandA(Gma,Bta,g0,X,Rd,co2Csx,gammas,co2ci4,Aqx)
+    ! choose smaller of Ac, Aq
+    sps    = AMAX1(0.001,sps)                  !Weng, 3/30/2006
+    Aleafx = (amin1(Acx,Aqx) - Rd) !*sps     ! Weng 4/4/2006
+    ! if(Aleafx.lt.0.0) Aleafx=0.0    ! by Weng 3/21/2006
+    ! calculate new values for gsc, cs (Lohammer model)
+    CO2csx = co2ca-Aleafx/Gbcx
+    Gscx   = g0 + X*Aleafx  ! revised by Weng
+    return
+end
 
 subroutine ciandA(Gma,Bta,g0,X,Rd,co2Cs,gammas,ciquad,Aquad)
-!     calculate coefficients for quadratic equation for ci
+    ! calculate coefficients for quadratic equation for ci
     b2 = g0+X*(Gma-Rd)
     b1 = (1.-co2cs*X)*(Gma-Rd)+g0*(Bta-co2cs)-X*(Gma*gammas+Bta*Rd)
     b0 = -(1.-co2cs*X)*(Gma*gammas+Bta*Rd)-g0*Bta*co2cs
-
-    bx=b1*b1-4.*b2*b0
+    bx = b1*b1-4.*b2*b0
     if(bx.gt.0.0) then 
-!       calculate larger root of quadratic
-    ciquad = (-b1+sqrt(bx))/(2.*b2)
+        ! calculate larger root of quadratic
+        ciquad = (-b1+sqrt(bx))/(2.*b2)
     endif
-
     IF(ciquad.lt.0.or.bx.lt.0.) THEN
-    Aquad = 0.0
-    ciquad = 0.7 * co2Cs
+        Aquad = 0.0
+        ciquad = 0.7 * co2Cs
     ELSE
-    Aquad = Gma*(ciquad-gammas)/(ciquad+Bta)
+        Aquad = Gma*(ciquad-gammas)/(ciquad+Bta)
     ENDIF
     return
 end
@@ -3527,26 +3461,25 @@ end
 ! =========================================================================
 ! some functions
 real function esat(T)
-!     returns saturation vapour pressure in Pa
-      esat=610.78*exp(17.27*T/(T+237.3))
-      return
-      end
+    ! returns saturation vapour pressure in Pa
+    esat=610.78*exp(17.27*T/(T+237.3))
+    return
+end
 
 real function funE(extkbd,FLAIT)
     funE=(1.0-exp(-extkbd*FLAIT))/extkbd
     return
 end
 
-!     ****************************************************************************
-!     Reed et al (1976, J appl Ecol 13:925) equation for temperature response
-!     used for Vcmax and Jmax
+! ****************************************************************************
+! Reed et al (1976, J appl Ecol 13:925) equation for temperature response
+! used for Vcmax and Jmax
 real function VJtemp(Tlf,TminVJ,TmaxVJ,ToptVJ,VJmax0)
-if(Tlf.lt.TminVJ) Tlf=TminVJ   !constrain leaf temperatures between min and max
-if(Tlf.gt.TmaxVJ) Tlf=TmaxVJ
-pwr=(TmaxVJ-ToptVJ)/(ToptVj-TminVj)
-VJtemp=VJmax0*((Tlf-TminVJ)/(ToptVJ-TminVJ))*     &
-&       ((TmaxVJ-Tlf)/(TmaxVJ-ToptVJ))**pwr 
-return
+    if(Tlf.lt.TminVJ) Tlf=TminVJ   !constrain leaf temperatures between min and max
+    if(Tlf.gt.TmaxVJ) Tlf=TmaxVJ
+    pwr=(TmaxVJ-ToptVJ)/(ToptVj-TminVj)
+    VJtemp=VJmax0*((Tlf-TminVJ)/(ToptVJ-TminVJ))*((TmaxVJ-Tlf)/(TmaxVJ-ToptVJ))**pwr 
+    return
 end
 
 real function fJQres(eJmx,alpha,Q,theta)
@@ -3558,67 +3491,58 @@ real function fJQres(eJmx,alpha,Q,theta)
     else
         fJQres = (BX)/(2*AX)                   !Weng 10/31/2008
     endif
-
     return
-    end
+end
 
-    real function EnzK(Tk,Trefk,EnzK0,Rconst,Eactiv)
-
+real function EnzK(Tk,Trefk,EnzK0,Rconst,Eactiv)
     temp1=(Eactiv/(Rconst* Trefk))*(1.-Trefk/Tk)
 !      if (temp1<50.)then
     EnzK = EnzK0*EXP((Eactiv/(Rconst* Trefk))*(1.-Trefk/Tk))
 !      else
 !      EnzK = EnzK0*EXP(50.)                                          ! Weng 10/31/2008
 !      endif
-
     return
-    end
+end
 
-    real function sinbet(doy,lat,pi,timeh)
+real function sinbet(doy,lat,pi,timeh)
     real lat
-!     sin(bet), bet = elevation angle of sun
-!     calculations according to Goudriaan & van Laar 1994 P30
+    ! sin(bet), bet = elevation angle of sun
+    ! calculations according to Goudriaan & van Laar 1994 P30
     rad = pi/180.
-!     sine and cosine of latitude
+    ! sine and cosine of latitude
     sinlat = sin(rad*lat)
     coslat = cos(rad*lat)
-!     sine of maximum declination
+    ! sine of maximum declination
     sindec=-sin(23.45*rad)*cos(2.0*pi*(doy+10.0)/365.0)
     cosdec=sqrt(1.-sindec*sindec)
-!     terms A & B in Eq 3.3
+    ! terms A & B in Eq 3.3
     A = sinlat*sindec
     B = coslat*cosdec
     sinbet = A+B*cos(pi*(timeh-12.)/12.)
     return
-    end
+end
 
 ! ==============================================================
 ! get input data: year, doy, hour, Tair, Tsoil, RH, VPD, Rain, WS, PAR
-subroutine Getclimate(year_seq,doy_seq,hour_seq,          &
-    &   forcing_data,climatefile,lines,yr_length)
+subroutine Getclimate(forcingFile, ilines, iiterms, nLines, forcingData_raw)
+    ! arg: fileName, row, column, tot_line, return_data
     implicit none
-    integer, parameter :: ilines=150000
-    integer, parameter :: iiterms=7
-    integer,dimension(ilines):: year_seq,doy_seq,hour_seq
-    real forcing_data(iiterms,ilines)
-    character(len=150) climatefile,commts
-    integer m,n,istat1,lines,yr_length
+    integer ilines, iiterms
+    integer nLines
+    real forcingData_raw(iiterms,ilines)
+    character(len=100) forcingFile,commts
+    integer nRow, mCol, istat1
 
-    open(11,file=climatefile,status='old',ACTION='read',     &
-    &     IOSTAT=istat1)
-!     skip 2 lines of input met data file
-        read(11,'(a160)') commts
-    m=0  ! to record the lines in a file
-    yr_length=0 ! to record years of a dataset
-    do    ! read forcing files
-        m=m+1
-        read(11,*,IOSTAT=istat1)year_seq(m),      &
-        &       doy_seq(m),hour_seq(m),           &
-        &       (forcing_data(n,m),n=1,iiterms)
+    open(11,file=forcingFile,status='old',ACTION='read',IOSTAT=istat1)
+    ! skip 2 lines of input met data file
+    read(11,'(a160)') commts
+    nRow = 0  ! to record the lines in a file
+    do while(.true.)   ! read forcing files
+        nRow = nRow + 1
+        read(11,*,IOSTAT=istat1)(forcingData_raw(mCol, nRow),mCol=1,iiterms)
         if(istat1<0)exit
     enddo ! end of reading the forcing file
-    lines=m-1
-    yr_length=(year_seq(lines)-year_seq(1))+1
+    nLines = nRow - 1
     close(11)    ! close forcing file
     return
 end
