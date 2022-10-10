@@ -33,7 +33,7 @@ program TECO
     call TECO_simu(parsFile, forcingFile)
 end
 
-subroutine TECO_main(parsFile, forcingFile, )
+subroutine TECO_main(parsFile, forcingFile)
     ! This module is to run TECO, for reading parameters, forcing data, other input data.
 
 end subroutine 
