@@ -3,7 +3,7 @@
 
 from ecopadLibs import ecopadObj
 # from .teco_spruce_v2 import myflib
-# from teco_spruce_v2 import myflib
+# from EcoPad_common_model_structure.teco import myflib
 import teco 
 
 def run(modelName, mode):
