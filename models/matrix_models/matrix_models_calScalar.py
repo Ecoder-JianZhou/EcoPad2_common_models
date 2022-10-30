@@ -93,8 +93,6 @@ def calScalars_CENTURY(tair_d, tair_m, rain_m, stemp_m): # monthly
     Bscalar_tem = np.ones((len_m, 15))
     return scal_temp_tem, scal_water_tem, scal_env_tem, Bscalar_tem, df_pet_m.loc[:,"PET"].to_numpy()
 
-
-
 def calScalars_TECO(stemp_d, smoist_d):
     # TECO ###############  
     tmp_teco=np.nanmean(stemp_d.iloc[:,1:].to_numpy()[:,2:], axis=1)  # mean of 10 layers of soils
@@ -102,7 +100,7 @@ def calScalars_TECO(stemp_d, smoist_d):
     Q10=2.5 # unitless	sensitive of microbial decomposition to temperature
     
     # temperature scalar based on 10-day moving temperature
-    t_movestep=10  # moving step for calculating mean temperature, e.g., 10 means 10-day moving mean
+    t_movestep = 10  # moving step for calculating mean temperature, e.g., 10 means 10-day moving mean
     # R: t_movemean=rollmean(tmp.teco,t.movestep,fill = tmp.teco[t.movestep-1],align = "right")
     t_movemean = np.convolve(np.append(tmp_teco, np.ones(t_movestep-1)*tmp_teco[-1]), np.ones(t_movestep), 'valid')/t_movestep
     scal_temp_tem1 = 0.58*(Q10**((t_movemean-10)/10))
@@ -122,14 +120,14 @@ def calScalars_TECO(stemp_d, smoist_d):
 
 def calScalars_CASA(tair_d, tair_m,stemp_m, smoist_m, rain_m):
     # CASA #######################
-    tmp_casa=tair_m.loc[:,"Tair"].to_numpy()  # air temperature
-    Q10_casa=1.5
-    scal_temp_tem1=Q10_casa**((tmp_casa-30)/10)
+    tmp_casa = tair_m.loc[:,"Tair"].to_numpy()  # air temperature
+    Q10_casa = 1.5
+    scal_temp_tem1 = Q10_casa**((tmp_casa-30)/10)
     # wiltpt=0.2  # cm3 cm-3, a guess # Jian: some wrong because of the smoist simulated less than 0.2
     wiltpt = 0.002
     # names(smoist.m)
     soilm  = (np.nanmean(smoist_m.iloc[:,1:4].to_numpy(), axis=1)-wiltpt)*300    # available soil water content in the first 30 cm depth
-    pet_m = calScalars_CENTURY(tair_d, tair_m, rain_m, stemp_m)[4]
+    pet_m  = calScalars_CENTURY(tair_d, tair_m, rain_m, stemp_m)[4]
     smoist = (rain_m.loc[:,"Rainfall"].to_numpy()+soilm)/pet_m
 
     scal_water_tem1=np.zeros(len(smoist))
@@ -190,7 +188,6 @@ def calScalars_DALEC2(stemp_d):
     pars_15 = 257.5559 # date of leaf fall; unit: doy
     pars_16 = 42.44377 # leaf fall duration period; unit: day
     
-
     datseq=np.linspace(1,len(stemp_d),len(stemp_d))
     mxc = np.array([0.000023599784710,0.000332730053021,0.000901865258885,-0.005437736864888,-0.020836027517787,0.126972018064287,-0.188459767342504])
     
@@ -218,11 +215,11 @@ def calScalars_DALEC2(stemp_d):
     # calculate k2 according to penology
     L_osf = pars_5
     LLog_osf = np.log(L_osf - 1)
-    ff=(np.log(pars_5)-np.log(pars_5-1))/2
-    wf = pars_16*np.sqrt(2)/2
+    ff  = (np.log(pars_5)-np.log(pars_5-1))/2
+    wf  = pars_16*np.sqrt(2)/2
     osf = (mxc[0]*LLog_osf**6+mxc[1]*LLog_osf**5+mxc[2]*LLog_osf**4+mxc[3]*LLog_osf**3+mxc[4]*LLog_osf**2+mxc[5]*LLog_osf+mxc[6])*wf
-    F_9 =(2/(pi**0.5))*(ff/wf)*np.exp(-((np.sin((datseq-pars_15+osf)/sf)*sf/wf)**2)) 
-    k2 = (1.0 - (1.0 - F_9)**1) / 1  # turnover rate of leaf c pool, i.e. leaf litter production
+    F_9 = (2/(pi**0.5))*(ff/wf)*np.exp(-((np.sin((datseq-pars_15+osf)/sf)*sf/wf)**2)) 
+    k2  = (1.0 - (1.0 - F_9)**1) / 1  # turnover rate of leaf c pool, i.e. leaf litter production
     
     # calculate k3
     k3 = (1.0 - (1.0 - pars_7)**1) / 1  # turnover rate of root c pool, i.e. root litter production

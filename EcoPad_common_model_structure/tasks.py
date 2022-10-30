@@ -9,7 +9,7 @@
 from celery import Celery
 import celeryconfig
 # from dockertask import docker_task
-from paramiko import SSHClient, AutoAddPolicy
+
 # from os import getenv
 import os
 import yaml
@@ -18,13 +18,9 @@ from jinja2 import Template
 from shutil import copyfile, move
 import pandas as pd
 import numpy as np
-from .datatask import teco_spruce_pulldata
+from .ecopadLibs import ecopadObj
 
 basedir="/data/ecopad_test"                 # Default base directory
-
-client=SSHClient()
-client.set_missing_host_key_policy(AutoAddPolicy())
-client.load_system_host_keys()
 
 app = Celery()
 app.config_from_object(celeryconfig)
@@ -34,6 +30,8 @@ def run_auto_forecast(self, modname, sitname):
     ''' 
     '''
     print("This is auto_forecasting ...")
+    task_id = str(self.request.id)          # Get the task id from portal
+    taskObj = ecopadObj(modname, sitname)
 
 
 # --------------------------------------------------------------------
@@ -41,3 +39,4 @@ def run_auto_forecast(self, modname, sitname):
 @app.task(bind=True)
 def test_run_simulation(self, modname, sitname):
     print("This is the simulaiton ...")
+    task_id = str(self.request.id)          # Get the task id from portal
