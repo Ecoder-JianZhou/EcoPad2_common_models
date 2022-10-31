@@ -24,7 +24,8 @@ def run_TECO_SPRUCE():
     # % 10th argument is temperature treatment (default 0.0, allow users to add 0~9 celsius degree)
     # % 11th argument is CO2 treatment (default ambient atmosphere 380.0ppm, allow users to type 380~900ppm)
     # (status, output) = commands.getstatusoutput('sh hello.sh')
-    (status, output) = subprocess.getstatusoutput("./"+curPath+"/run.sh")
+    (status, output) = subprocess.run("./teco_spruce/run")
+    # print("")
     print(output, status)
 
 def run_matrix_model():
